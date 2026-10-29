@@ -148,9 +148,26 @@ body.live .tabs{display:none}
 .sheet textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;font-size:18px;background:var(--bg);color:var(--fg)}
 .row{display:flex;gap:8px;align-items:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13px;z-index:40;max-width:84%;text-align:center}
-/* translate tab */
+/* translate tab: every function lives in its own card */
+.zone{background:var(--surface);border:1px solid var(--line);border-radius:16px;margin-block:12px;overflow:hidden}
+.zone-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);width:100%;text-align:left}
+.zone-h .zt{font-family:var(--f-display);font-weight:800;font-size:16px}
+.zone-h .zs{font-size:12px;color:var(--muted)}
+.zone-h .sp{flex:1}
+.zone-h .ico{color:var(--muted)}
+.zone-h .chev{width:16px;height:16px;color:var(--muted);transition:transform .2s}
+.zone.closed .chev{transform:rotate(-90deg)}
+.zone.closed .zone-b{display:none}
+.zone.closed .zone-h{border-bottom:0}
+.zone-b{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.zone-b.flush{padding:0}
+.chip{font-size:11px;padding:3px 8px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.chip.fast{background:var(--me);color:var(--bg)}
+.sheet input[type=text]{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;font-size:16px;background:var(--bg);color:var(--fg)}
+.sheet a{color:var(--me)}
+
 .trbox{display:flex;flex-direction:column;gap:10px;padding-block:16px 8px}
-#trIn{width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--f-read);font-size:16px;line-height:1.45;background:var(--surface);color:var(--fg);resize:vertical}
+#trIn{width:100%;min-height:110px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--f-read);font-size:16px;line-height:1.45;background:var(--surface);color:var(--fg);resize:vertical}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .imgcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-block:8px}
 .imgcard img{display:block;width:100%;height:auto}
@@ -193,9 +210,19 @@ body.live .tabs{display:none}
       </div>
     </section>
     <section class="view" id="v-tr" hidden><div class="scroll pad" id="trScroll">
-      <div class="trbox">
-        <textarea id="trIn" placeholder="粘贴或输入英文…" autocapitalize="sentences" spellcheck="false"></textarea>
-        <div class="row"><label class="btn" for="imgIn"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>图片翻译</label><input type="file" id="imgIn" class="vh" accept="image/*"><span style="flex:1"></span><button class="btn sm" id="trClear">清空</button><button class="btn pri" id="trGo">翻译</button></div>
+      <div class="zone">
+        <div class="zone-h"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 11h16M4 16h10"/></svg><span class="zt">文字翻译</span><span class="sp"></span><span class="zs">粘贴英文，逐句翻译</span></div>
+        <div class="zone-b">
+          <textarea id="trIn" placeholder="粘贴或输入英文…" autocapitalize="sentences" spellcheck="false"></textarea>
+          <div class="row"><span style="flex:1"></span><button class="btn sm" id="trClear">清空</button><button class="btn pri" id="trGo">翻译文字</button></div>
+        </div>
+      </div>
+      <div class="zone">
+        <div class="zone-h"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg><span class="zt">图片翻译</span><span class="sp"></span><span class="chip" id="ocrMode">手机识别</span></div>
+        <div class="zone-b">
+          <div class="row"><label class="btn pri" for="imgIn">选择图片</label><input type="file" id="imgIn" class="vh" accept="image/*"><span class="muted" style="font-size:13px;flex:1">截图、照片都可以，中文会排在每段英文下面</span></div>
+          <div class="row"><span class="muted" style="font-size:12px;flex:1" id="ocrHint">手机本地识别较慢（约 10 秒）。开启云端识别后一般 2–4 秒。</span><button class="btn sm" id="ocrSet">云端识别设置</button></div>
+        </div>
       </div>
       <div id="trOut"></div>
     </div></section>
@@ -20686,26 +20713,31 @@ function trWordRow(e){
   <div class="mean">${esc(e.d.zh)}</div><div class="ex">${hlEx(e.ex,e.src)}</div>
   <div class="wact"><button class="btn sm" data-act="say">${ICON.play}</button>${st==='learning'?'<span class="state">✓ 背词中</span>':st==='known'?'<span class="state">✓ 已掌握</span>':'<button class="btn sm pri" data-act="learn">背它</button><button class="btn sm" data-act="known">我认识</button>'}</div></div>`;
 }
+let trOpen={img:true,pairs:true,words:true};
+const CHEV='<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+function zone(key,title,sub,body,flush){return `<div class="zone${trOpen[key]?'':' closed'}"><button class="zone-h" data-toggle="${key}"><span class="zt">${title}</span><span class="sp"></span><span class="zs">${sub||''}</span>${CHEV}</button><div class="zone-b${flush?' flush':''}">${body}</div></div>`;}
 function renderTr(){
   const box=$('#trOut');
-  if(!trState){box.innerHTML=`<div class="note-box">粘贴英文点「翻译」：逐句给中文，黄色标出超出你词汇量的词，最后汇总词频。<br>点「图片翻译」选一张有英文的照片或截图：识别文字，把中文排在每段英文下面，生成一张新图片。</div>`;return;}
+  if(!trState){box.innerHTML='';return;}
   let h='';
   if(trState.img||trState.imgMsg){
-    h+=`<div class="imgcard">${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片" style="${trState.working?'opacity:.55':''}">`:''}${trState.imgMsg?`<div class="muted" id="imgMsg" style="padding:12px">${trState.imgMsg}</div>`:''}
-    ${trState.img&&!trState.working?`<div class="row" style="padding:10px"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}</div>`;
+    const body=`${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片" style="display:block;width:100%;height:auto;${trState.working?'opacity:.55':''}">`:''}
+      ${trState.imgMsg?`<div class="muted" id="imgMsg" style="padding:12px 14px">${trState.imgMsg}</div>`:''}
+      ${trState.img&&!trState.working?`<div class="row" style="padding:10px 14px;border-top:1px solid var(--line)"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}`;
+    h+=zone('img','图片结果',trState.took?`用时 ${trState.took} 秒 · ${trState.via}`:'',body,true);
+  }else if(trState.loading){
+    h+=zone('pairs','翻译结果','',`<div><span class="spin"></span> ${esc(trState.loading)}</div>`);
   }
   if(trState.pairs&&trState.pairs.length){
+    const n=trState.pairs.filter(p=>!p.br).length;
+    h+=zone('pairs','逐句对照',`${n} 句`,`<div class="pairs" style="margin-top:0">${trState.pairs.map(p=>p.br?'<hr>':`<div class="pair"><div class="en">${markWords(p.en)} <button class="say" data-say="${esc(p.en)}" aria-label="朗读">${ICON.play}</button></div><div class="zh">${esc(p.zh)}</div></div>`).join('')}</div>`);
     const W=wordsOf(trState.pairs);
     const list=(trAll?W.all:W.fresh).slice().sort(trSort==='rank'?(a,b)=>a.d.r-b.d.r:(a,b)=>b.n-a.n||a.d.r-b.d.r);
     const learnable=W.fresh.filter(e=>!vocab[e.w]).length;
-    h+=`<div class="sect"><div class="eyebrow">逐句翻译</div><div class="pairs">${trState.pairs.map(p=>p.br?'<hr>':`<div class="pair"><div class="en">${markWords(p.en)} <button class="say" data-say="${esc(p.en)}" aria-label="朗读">${ICON.play}</button></div><div class="zh">${esc(p.zh)}</div></div>`).join('')}</div></div>
-    <div class="sect"><div class="eyebrow">词频总结</div>
-    <div class="stats" style="margin-top:8px"><div class="stat"><b class="mono">${W.total}</b><span>总词数</span></div><div class="stat"><b class="mono">${W.all.length}</b><span>不同实词</span></div><div class="stat"><b class="mono">${W.fresh.length}</b><span>生词</span></div></div>
-    <div class="toolbar"><div class="seg2"><button data-sort="rank" aria-pressed="${trSort==='rank'}">按常用程度</button><button data-sort="count" aria-pressed="${trSort==='count'}">按本文次数</button></div>
-    <button class="btn sm" data-act="toggleAll">${trAll?'只看生词':'看全部词'}</button>${learnable?`<button class="btn sm pri" data-act="all">全部背</button>`:''}</div>
-    <div class="list">${list.length?list.map(trWordRow).join(''):'<div class="empty">没有超出你词汇量的词</div>'}</div></div>`;
-  }else if(trState.loading){
-    h+=`<div class="empty"><span class="spin"></span> ${esc(trState.loading)}</div>`;
+    h+=zone('words','词频总结',`${W.fresh.length} 个生词`,`<div class="stats"><div class="stat"><b class="mono">${W.total}</b><span>总词数</span></div><div class="stat"><b class="mono">${W.all.length}</b><span>不同实词</span></div><div class="stat"><b class="mono">${W.fresh.length}</b><span>生词</span></div></div>
+      <div class="toolbar" style="padding-block:0"><div class="seg2"><button data-sort="rank" aria-pressed="${trSort==='rank'}">按常用程度</button><button data-sort="count" aria-pressed="${trSort==='count'}">按本文次数</button></div>
+      <button class="btn sm" data-act="toggleAll">${trAll?'只看生词':'看全部词'}</button>${learnable?`<button class="btn sm pri" data-act="all">全部背</button>`:''}</div>
+      <div class="list" style="padding-block:0">${list.length?list.map(trWordRow).join(''):'<div class="empty" style="padding-block:20px">没有超出你词汇量的词</div>'}</div>`);
   }
   box.innerHTML=h;
   const sv=$('#trSave');if(sv)sv.onclick=saveImg;
@@ -20713,8 +20745,8 @@ function renderTr(){
 async function runTextTr(){
   const text=$('#trIn').value.trim();if(!text){toast('先粘贴一段英文');return;}
   if(trBusy)return;trBusy=true;$('#trIn').blur();
-  trState={loading:'正在翻译…'};renderTr();
-  try{trState={pairs:await translatePairs(text)};}catch(e){trState={imgMsg:'翻译失败，请检查网络后重试'};}
+  trOpen.pairs=true;trState={loading:'正在翻译…'};renderTr();
+  try{trState={pairs:await translatePairs(text)};}catch(e){trState={loading:'翻译失败，请检查网络后重试'};}
   trBusy=false;renderTr();
 }
 $('#trGo').onclick=runTextTr;
@@ -20722,6 +20754,7 @@ $('#trClear').onclick=()=>{$('#trIn').value='';trState=null;renderTr();};
 $('#trOut').addEventListener('click',e=>{
   const sy=e.target.closest('[data-say]');if(sy){speak(sy.dataset.say);return;}
   const w=e.target.closest('.w');if(w){const pr=w.closest('.pair');wordSheet(w.dataset.w,pr?pr.querySelector('.en').textContent.trim():'');return;}
+  const tg=e.target.closest('[data-toggle]');if(tg){trOpen[tg.dataset.toggle]=!trOpen[tg.dataset.toggle];renderTr();return;}
   const so=e.target.closest('[data-sort]');if(so){trSort=so.dataset.sort;renderTr();return;}
   const a=e.target.closest('[data-act]');if(!a||!trState||!trState.pairs)return;const act=a.dataset.act;
   if(act==='toggleAll'){trAll=!trAll;renderTr();return;}
@@ -20756,7 +20789,7 @@ function getPool(){
   return poolP;
 }
 // preload the recognizers in the background so a photo starts recognizing immediately
-function prewarm(){getPool().catch(()=>{});}
+function prewarm(){if(typeof ocrKey==='string'&&ocrKey)return;getPool().catch(()=>{});}
 // cut the image into horizontal slices at blank rows, so no text line is split
 function sliceRows(ctx,W,H,n){
   if(n<=1)return [[0,H]];
@@ -20780,53 +20813,133 @@ function wrapText(ctx,text,maxW){
   if(line)lines.push(line);return lines;
 }
 function setMsg(html){if(!trState)return;trState.imgMsg=html;const el=document.getElementById('imgMsg');if(el)el.innerHTML=html;else renderTr();}
+let ocrKey='';try{ocrKey=localStorage.getItem('eh-ocrkey')||'';}catch(e){}
+function showOcrMode(){const m=$('#ocrMode');m.textContent=ocrKey?'云端识别':'手机识别';m.classList.toggle('fast',!!ocrKey);
+  $('#ocrHint').textContent=ocrKey?'云端识别已开启，一般 2–4 秒出结果；连不上时自动改用手机识别。':'手机本地识别较慢（约 10 秒）。开启云端识别后一般 2–4 秒。';}
+$('#ocrSet').onclick=()=>{
+  openSheet(`<h3>云端识别（OCR.space）</h3>
+  <div class="muted" style="line-height:1.55">图片会发到 OCR.space 识别文字，比手机本地快很多。免费版每月 2.5 万次。<br>1. 打开 <a href="https://ocr.space/ocrapi/freekey" target="_blank" rel="noopener">ocr.space/ocrapi/freekey</a>，填邮箱领取免费密钥<br>2. 把邮件里的密钥粘贴到下面</div>
+  <input type="text" id="keyIn" placeholder="粘贴密钥，例如 K8xxxxxxxx" value="${esc(ocrKey)}" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="row">${ocrKey?'<button class="btn" id="keyDel">关闭云端识别</button>':''}<span style="flex:1"></span><button class="btn" id="keyCancel">取消</button><button class="btn pri" id="keySave">保存</button></div>`);
+  $('#keyCancel').onclick=closeSheet;
+  const del=$('#keyDel');if(del)del.onclick=()=>{ocrKey='';try{localStorage.removeItem('eh-ocrkey')}catch(e){}showOcrMode();closeSheet();toast('已改回手机识别');};
+  $('#keySave').onclick=()=>{const k=$('#keyIn').value.trim();if(!k){toast('先粘贴密钥');return;}ocrKey=k;try{localStorage.setItem('eh-ocrkey',k)}catch(e){}showOcrMode();closeSheet();toast('已开启云端识别');};
+};
+showOcrMode();
+function canvasBlob(c,q){return new Promise(r=>c.toBlob(r,'image/jpeg',q));}
+async function ocrCloud(ocr){
+  let q=0.8,blob=await canvasBlob(ocr,q);
+  while(blob&&blob.size>950000&&q>0.35){q-=0.15;blob=await canvasBlob(ocr,q);}
+  const fd=new FormData();fd.append('apikey',ocrKey);fd.append('language','eng');fd.append('isOverlayRequired','true');fd.append('OCREngine','2');fd.append('file',blob,'image.jpg');
+  const to=withTimeout(10000);
+  try{
+    const r=await fetch('https://api.ocr.space/parse/image',{method:'POST',body:fd,signal:to.signal});
+    const j=await r.json();
+    if(!j||j.IsErroredOnProcessing||!j.ParsedResults||!j.ParsedResults[0])throw new Error('cloud:'+String((j&&j.ErrorMessage)||'error'));
+    const L=(j.ParsedResults[0].TextOverlay&&j.ParsedResults[0].TextOverlay.Lines)||[];
+    return L.map(l=>{const ws=l.Words||[];if(!ws.length)return null;
+      const x0=Math.min(...ws.map(w=>w.Left)),x1=Math.max(...ws.map(w=>w.Left+w.Width)),y0=Math.min(...ws.map(w=>w.Top)),y1=Math.max(...ws.map(w=>w.Top+w.Height));
+      return {text:l.LineText||ws.map(w=>w.WordText).join(' '),confidence:90,bbox:{x0,x1,y0,y1}};}).filter(Boolean);
+  }finally{to.done()}
+}
+async function ocrLocal(ocr,octx,W,H){
+  const workers=await getPool();
+  const slices=sliceRows(octx,W,H,H>500?workers.length:1);
+  let doneN=0;ocrProg=null;setMsg('<span class="spin"></span> 正在用手机识别文字…');
+  const parts=await Promise.all(slices.map(async([y0,y1],i)=>{
+    const c=document.createElement('canvas');c.width=W;c.height=y1-y0;c.getContext('2d').drawImage(ocr,0,y0,W,y1-y0,0,0,W,y1-y0);
+    const r=await workers[i%workers.length].recognize(c,{},{text:false,blocks:true,hocr:false,tsv:false});
+    doneN++;if(slices.length>1)setMsg(`<span class="spin"></span> 正在用手机识别文字 ${doneN}/${slices.length}`);
+    return (r.data.lines||[]).map(l=>({text:l.text,confidence:l.confidence,bbox:{x0:l.bbox.x0,x1:l.bbox.x1,y0:l.bbox.y0+y0,y1:l.bbox.y1+y0}}));
+  }));
+  return parts.flat();
+}
+function buildParas(lines){
+  // keep only lines that read like English, then group neighbouring lines into paragraphs
+  const good=lines.filter(l=>{
+    const t=(l.text||'').trim();if(!t||l.confidence<55)return false;
+    const ws=t.split(/\s+/);const real=ws.filter(w=>/^[("'“‘]?[A-Za-z][A-Za-z'’-]*[)"'”’.,:;!?]*$/.test(w)&&w.replace(/[^A-Za-z]/g,'').length>=2);
+    if(real.length/ws.length<0.6)return false;
+    if(real.length>=2)return true;
+    const w0=norm(real[0]?real[0].replace(/[^A-Za-z']/g,''):'');return real.length===1&&ws.length<=2&&DICT.has(w0)&&l.confidence>75;
+  }).map(l=>({t:l.text.trim(),b:l.bbox,h:l.bbox.y1-l.bbox.y0})).sort((a,b)=>a.b.y0-b.b.y0||a.b.x0-b.b.x0);
+  const blocks=[];
+  for(const L of good){
+    let host=null;
+    for(let k=blocks.length-1;k>=Math.max(0,blocks.length-4);k--){const B=blocks[k];
+      const gap=L.b.y0-B.y1, ov=Math.min(L.b.x1,B.x1)-Math.max(L.b.x0,B.x0), minW=Math.min(L.b.x1-L.b.x0,B.x1-B.x0);
+      if(gap>-B.lh*0.5&&gap<B.lh*0.9&&ov>minW*0.3&&L.h/B.lh>0.78&&L.h/B.lh<1.28){host=B;break;}}
+    if(host){host.ls.push(L.t);host.x0=Math.min(host.x0,L.b.x0);host.x1=Math.max(host.x1,L.b.x1);host.y1=Math.max(host.y1,L.b.y1);}
+    else blocks.push({ls:[L.t],x0:L.b.x0,x1:L.b.x1,y0:L.b.y0,y1:L.b.y1,lh:L.h});
+  }
+  return blocks.map(B=>({text:B.ls.join(' ').replace(/(\w)-\s+(\w)/g,'$1$2').replace(/\s+/g,' ').trim(),b:{x0:B.x0,y0:B.y0,x1:B.x1,y1:B.y1},lh:B.lh}));
+}
+async function composeImage(src,W,H,paras){
+  paras=paras.slice().sort((a,b)=>a.b.y0-b.b.y0);
+  const groups=[];
+  for(const p of paras){const g=groups[groups.length-1];if(g&&p.b.y0<g.y1-4){g.items.push(p);g.y1=Math.max(g.y1,p.b.y1);}else groups.push({items:[p],y0:p.b.y0,y1:p.b.y1});}
+  const meas=document.createElement('canvas').getContext('2d');
+  const FONT='"PingFang SC","Hiragino Sans GB",-apple-system,sans-serif';
+  for(const g of groups){
+    let hMax=0;
+    for(const p of g.items){
+      p.fs=Math.max(15,Math.min(46,Math.round(p.lh*0.82)));
+      p.x=Math.max(8,p.b.x0);
+      const width=Math.min(W-p.x-8,Math.max(p.b.x1-p.b.x0,W*0.45));
+      meas.font=`600 ${p.fs}px ${FONT}`;
+      p.wl=wrapText(meas,p.zh||'',width);
+      hMax=Math.max(hMax,p.wl.length*p.fs*1.35);
+    }
+    g.h=Math.ceil(hMax+16);
+  }
+  const Ht=H+groups.reduce((a,g)=>a+g.h,0);
+  const k=Math.min(1,Math.sqrt(15e6/(W*Ht)));
+  const out=document.createElement('canvas');out.width=Math.round(W*k);out.height=Math.round(Ht*k);
+  const ctx=out.getContext('2d');ctx.scale(k,k);
+  let sy=0,dy=0;
+  groups.forEach((g,i)=>{
+    const next=groups[i+1];
+    let c=Math.min(H,g.y1+6);if(next&&next.y0>g.y1)c=Math.min(c,next.y0);
+    c=Math.max(c,sy);
+    if(c>sy){ctx.drawImage(src,0,sy,W,c-sy,0,dy,W,c-sy);dy+=c-sy;sy=c;}
+    ctx.fillStyle='#FFF6CF';ctx.fillRect(0,dy,W,g.h);
+    ctx.fillStyle='#E8D89A';ctx.fillRect(0,dy,W,1);ctx.fillRect(0,dy+g.h-1,W,1);
+    ctx.fillStyle='#2A2310';ctx.textBaseline='top';
+    for(const p of g.items){ctx.font=`600 ${p.fs}px ${FONT}`;p.wl.forEach((ln,j)=>ctx.fillText(ln,p.x,dy+8+j*p.fs*1.35));}
+    dy+=g.h;
+  });
+  if(sy<H)ctx.drawImage(src,0,sy,W,H-sy,0,dy,W,H-sy);
+  return canvasBlob(out,0.9);
+}
 async function runImageTr(file){
   if(trBusy)return;trBusy=true;
-  trState={imgMsg:'<span class="spin"></span> 准备识别…'};renderTr();
+  const t0=performance.now();
+  trOpen.img=true;trOpen.pairs=false;trOpen.words=true;
+  trState={imgMsg:'<span class="spin"></span> 准备识别…',working:true};renderTr();
   try{
     const im=await loadImage(file);
     const scale=Math.min(1,1000/Math.max(im.naturalWidth,1),Math.sqrt(1.6e6/Math.max(1,im.naturalWidth*im.naturalHeight)));
     const W=Math.round(im.naturalWidth*scale),H=Math.round(im.naturalHeight*scale);
     const src=document.createElement('canvas');src.width=W;src.height=H;src.getContext('2d').drawImage(im,0,0,W,H);
     trState={img:im.src,imgMsg:'<span class="spin"></span> 正在识别文字…',working:true};renderTr();
-    let lastP=-1;
-    ocrProg=m=>{if(m.status==='recognizing text'){const pc=Math.round(m.progress*100);if(pc-lastP>=10){lastP=pc;setMsg(`<span class="spin"></span> 正在识别文字 ${pc}%`);}}else if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
-    const workers=await getPool();
-    // dark-mode screenshots: recognise on an inverted grey copy (much more accurate)
+    // grey copy for recognition; dark-mode screenshots are inverted (much more accurate)
     const ocr=document.createElement('canvas');ocr.width=W;ocr.height=H;const octx=ocr.getContext('2d');octx.drawImage(src,0,0);
     try{const id=octx.getImageData(0,0,W,H),px=id.data;let sum=0;for(let i=0;i<px.length;i+=16)sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;
       const dark=sum/(px.length/16)<115;
       for(let i=0;i<px.length;i+=4){let g=px[i]*.299+px[i+1]*.587+px[i+2]*.114;if(dark)g=255-g;px[i]=px[i+1]=px[i+2]=g;}
       octx.putImageData(id,0,0);}catch(e){}
-    // recognise slices in parallel, one per recognizer
-    const slices=sliceRows(octx,W,H,H>500?workers.length:1);
-    let doneN=0;ocrProg=null;setMsg(`<span class="spin"></span> 正在识别文字…`);
-    const parts=await Promise.all(slices.map(async([y0,y1],i)=>{
-      const c=document.createElement('canvas');c.width=W;c.height=y1-y0;c.getContext('2d').drawImage(ocr,0,y0,W,y1-y0,0,0,W,y1-y0);
-      const w=workers[i%workers.length];
-      const r=await w.recognize(c,{},{text:false,blocks:true,hocr:false,tsv:false});
-      doneN++;if(slices.length>1)setMsg(`<span class="spin"></span> 正在识别文字 ${doneN}/${slices.length}`);
-      return (r.data.lines||[]).map(l=>({text:l.text,confidence:l.confidence,bbox:{x0:l.bbox.x0,x1:l.bbox.x1,y0:l.bbox.y0+y0,y1:l.bbox.y1+y0}}));
-    }));
-    const data={lines:parts.flat()};
-    // keep only lines that read like English, then group neighbouring lines into paragraphs
-    const good=(data.lines||[]).filter(l=>{
-      const t=(l.text||'').trim();if(!t||l.confidence<55)return false;
-      const ws=t.split(/\s+/);const real=ws.filter(w=>/^[("'“‘]?[A-Za-z][A-Za-z'’-]*[)"'”’.,:;!?]*$/.test(w)&&w.replace(/[^A-Za-z]/g,'').length>=2);
-      if(real.length/ws.length<0.6)return false;
-      if(real.length>=2)return true;
-      const w0=norm(real[0]?real[0].replace(/[^A-Za-z']/g,''):'');return real.length===1&&ws.length<=2&&DICT.has(w0)&&l.confidence>75;
-    }).map(l=>({t:l.text.trim(),b:l.bbox,h:l.bbox.y1-l.bbox.y0})).sort((a,b)=>a.b.y0-b.b.y0||a.b.x0-b.b.x0);
-    const blocks=[];
-    for(const L of good){
-      let host=null;
-      for(let k=blocks.length-1;k>=Math.max(0,blocks.length-4);k--){const B=blocks[k];
-        const gap=L.b.y0-B.y1, ov=Math.min(L.b.x1,B.x1)-Math.max(L.b.x0,B.x0), minW=Math.min(L.b.x1-L.b.x0,B.x1-B.x0);
-        if(gap>-B.lh*0.5&&gap<B.lh*0.9&&ov>minW*0.3&&L.h/B.lh>0.78&&L.h/B.lh<1.28){host=B;break;}}
-      if(host){host.ls.push(L.t);host.x0=Math.min(host.x0,L.b.x0);host.x1=Math.max(host.x1,L.b.x1);host.y1=Math.max(host.y1,L.b.y1);}
-      else blocks.push({ls:[L.t],x0:L.b.x0,x1:L.b.x1,y0:L.b.y0,y1:L.b.y1,lh:L.h});
+    let lines=null,via='手机识别';
+    if(ocrKey){
+      setMsg('<span class="spin"></span> 正在云端识别文字…');
+      try{lines=await ocrCloud(ocr);via='云端识别';}
+      catch(e){console.warn(e);const bad=/api ?key|invalid/i.test(String(e&&e.message));setMsg(bad?'<span class="spin"></span> 云端密钥无效，改用手机识别…':'<span class="spin"></span> 云端没响应，改用手机识别…');}
     }
-    let paras=blocks.map(B=>({text:B.ls.join(' ').replace(/(\w)-\s+(\w)/g,'$1$2').replace(/\s+/g,' ').trim(),b:{x0:B.x0,y0:B.y0,x1:B.x1,y1:B.y1},lh:B.lh}));
+    if(!lines){
+      let lastP=-1;
+      ocrProg=m=>{if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
+      lines=await ocrLocal(ocr,octx,W,H);
+    }
+    const paras=buildParas(lines);
     if(!paras.length){trState={imgMsg:'这张图片里没认出英文。换一张更清晰、文字更大的试试。'};trBusy=false;renderTr();return;}
     setMsg(`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`);
     let results;
@@ -20834,43 +20947,8 @@ async function runImageTr(file){
     const allPairs=[];
     paras.forEach((p,i)=>{const pr=results[i]||[];p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});});
     allPairs.pop();
-    // group paragraphs that sit side by side (columns) into rows
-    paras.sort((a,b)=>a.b.y0-b.b.y0);
-    const groups=[];
-    for(const p of paras){const g=groups[groups.length-1];if(g&&p.b.y0<g.y1-4){g.items.push(p);g.y1=Math.max(g.y1,p.b.y1);}else groups.push({items:[p],y0:p.b.y0,y1:p.b.y1});}
-    const meas=document.createElement('canvas').getContext('2d');
-    const FONT='"PingFang SC","Hiragino Sans GB",-apple-system,sans-serif';
-    for(const g of groups){
-      let hMax=0;
-      for(const p of g.items){
-        p.fs=Math.max(15,Math.min(46,Math.round(p.lh*0.82)));
-        p.x=Math.max(8,p.b.x0);
-        const width=Math.min(W-p.x-8,Math.max(p.b.x1-p.b.x0,W*0.45));
-        meas.font=`600 ${p.fs}px ${FONT}`;
-        p.lines=wrapText(meas,p.zh,width);
-        hMax=Math.max(hMax,p.lines.length*p.fs*1.35);
-      }
-      g.h=Math.ceil(hMax+16);
-    }
-    let Ht=H+groups.reduce((a,g)=>a+g.h,0);
-    const k=Math.min(1,Math.sqrt(15e6/(W*Ht)));
-    const out=document.createElement('canvas');out.width=Math.round(W*k);out.height=Math.round(Ht*k);
-    const ctx=out.getContext('2d');ctx.scale(k,k);
-    let sy=0,dy=0;
-    groups.forEach((g,i)=>{
-      const next=groups[i+1];
-      let cut=Math.min(H,g.y1+6);if(next&&next.y0>g.y1)cut=Math.min(cut,next.y0);
-      cut=Math.max(cut,sy);
-      if(cut>sy){ctx.drawImage(src,0,sy,W,cut-sy,0,dy,W,cut-sy);dy+=cut-sy;sy=cut;}
-      ctx.fillStyle='#FFF6CF';ctx.fillRect(0,dy,W,g.h);
-      ctx.fillStyle='#E8D89A';ctx.fillRect(0,dy,W,1);ctx.fillRect(0,dy+g.h-1,W,1);
-      ctx.fillStyle='#2A2310';ctx.textBaseline='top';
-      for(const p of g.items){ctx.font=`600 ${p.fs}px ${FONT}`;p.lines.forEach((ln,j)=>ctx.fillText(ln,p.x,dy+8+j*p.fs*1.35));}
-      dy+=g.h;
-    });
-    if(sy<H)ctx.drawImage(src,0,sy,W,H-sy,0,dy,W,H-sy);
-    outBlob=await new Promise(r=>out.toBlob(r,'image/jpeg',0.9));
-    trState={img:URL.createObjectURL(outBlob),pairs:allPairs};
+    outBlob=await composeImage(src,W,H,paras);
+    trState={img:URL.createObjectURL(outBlob),pairs:allPairs,took:((performance.now()-t0)/1000).toFixed(1),via};
   }catch(e){
     console.warn(e);ocrProg=null;
     trState={imgMsg:'识别失败：'+(e&&e.message==='load'?'识别组件下载不了，请检查网络（大陆可能要开 VPN）后重试':'请换一张图片再试')};
