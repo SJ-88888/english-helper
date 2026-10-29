@@ -20667,8 +20667,8 @@ function renderTr(){
   if(!trState){box.innerHTML=`<div class="note-box">粘贴英文点「翻译」：逐句给中文，黄色标出超出你词汇量的词，最后汇总词频。<br>点「图片翻译」选一张有英文的照片或截图：识别文字，把中文排在每段英文下面，生成一张新图片。</div>`;return;}
   let h='';
   if(trState.img||trState.imgMsg){
-    h+=`<div class="imgcard">${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片">`:''}${trState.imgMsg?`<div class="muted" style="padding:12px">${trState.imgMsg}</div>`:''}
-    ${trState.img?`<div class="row" style="padding:10px"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}</div>`;
+    h+=`<div class="imgcard">${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片" style="${trState.working?'opacity:.55':''}">`:''}${trState.imgMsg?`<div class="muted" id="imgMsg" style="padding:12px">${trState.imgMsg}</div>`:''}
+    ${trState.img&&!trState.working?`<div class="row" style="padding:10px"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}</div>`;
   }
   if(trState.pairs&&trState.pairs.length){
     const W=wordsOf(trState.pairs);
@@ -20714,28 +20714,39 @@ $('#trOut').addEventListener('click',e=>{
 // ----- image: OCR in the browser, translation strips under each paragraph -----
 let ocrWorker=null, ocrProg=null, outBlob=null;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('load'));document.head.appendChild(s);});}
-async function getWorker(){
-  if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
-  if(!ocrWorker)ocrWorker=await Tesseract.createWorker('eng',1,{logger:m=>{if(ocrProg)ocrProg(m)}});
-  return ocrWorker;
+let workerP=null;
+function getWorker(){
+  if(!workerP){
+    workerP=(async()=>{
+      if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+      ocrWorker=await Tesseract.createWorker('eng',1,{langPath:'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@4.1.0',gzip:false,cachePath:'fast-4.1.0',logger:m=>{if(ocrProg)ocrProg(m)}});
+      return ocrWorker;
+    })();
+    workerP.catch(()=>{workerP=null;});
+  }
+  return workerP;
 }
+// preload the recognizer in the background so a photo starts recognizing immediately
+function prewarm(){getWorker().catch(()=>{});}
 function loadImage(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=u;});}
 function wrapText(ctx,text,maxW){
   const lines=[];let line='';
   for(const ch of Array.from(text)){const t=line+ch;if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=ch.trim()?ch:'';}else line=t;}
   if(line)lines.push(line);return lines;
 }
+function setMsg(html){if(!trState)return;trState.imgMsg=html;const el=document.getElementById('imgMsg');if(el)el.innerHTML=html;else renderTr();}
 async function runImageTr(file){
   if(trBusy)return;trBusy=true;
   trState={imgMsg:'<span class="spin"></span> 准备识别（第一次要下载约 10MB 识别数据）…'};renderTr();
   try{
     const im=await loadImage(file);
-    const scale=Math.min(1,1800/Math.max(im.naturalWidth,1));
+    const scale=Math.min(1,1280/Math.max(im.naturalWidth,1),Math.sqrt(2.4e6/Math.max(1,im.naturalWidth*im.naturalHeight)));
     const W=Math.round(im.naturalWidth*scale),H=Math.round(im.naturalHeight*scale);
     const src=document.createElement('canvas');src.width=W;src.height=H;src.getContext('2d').drawImage(im,0,0,W,H);
-    ocrProg=m=>{if(m.status==='recognizing text'){trState.imgMsg=`<span class="spin"></span> 正在识别文字 ${Math.round(m.progress*100)}%`;renderTr();}};
+    trState={img:im.src,imgMsg:'<span class="spin"></span> 正在识别文字…',working:true};renderTr();
+    let lastP=-1;
+    ocrProg=m=>{if(m.status==='recognizing text'){const pc=Math.round(m.progress*100);if(pc-lastP>=10){lastP=pc;setMsg(`<span class="spin"></span> 正在识别文字 ${pc}%`);}}else if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
     const worker=await getWorker();
-    trState.imgMsg='<span class="spin"></span> 正在识别文字…';renderTr();
     const {data}=await worker.recognize(src);
     ocrProg=null;
     let paras=(data.paragraphs||[]).map(p=>{
@@ -20744,9 +20755,11 @@ async function runImageTr(file){
       return {text,b:p.bbox,lh:hs.length?hs[Math.floor(hs.length/2)]:20,conf:p.confidence};
     }).filter(p=>(p.text.match(/[A-Za-z]/g)||[]).length>=3&&p.conf>35);
     if(!paras.length){trState={imgMsg:'这张图片里没认出英文。换一张更清晰、文字更大的试试。'};trBusy=false;renderTr();return;}
-    trState.imgMsg=`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`;renderTr();
+    setMsg(`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`);
+    const results=new Array(paras.length);let next=0;
+    await Promise.all(Array.from({length:Math.min(5,paras.length)},async()=>{while(next<paras.length){const i=next++;try{results[i]=await translatePairs(paras[i].text);}catch(e){results[i]=[{en:paras[i].text,zh:'（翻译失败）'}];}}}));
     const allPairs=[];
-    for(const p of paras){const pr=await translatePairs(p.text);p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});}
+    paras.forEach((p,i)=>{const pr=results[i]||[];p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});});
     allPairs.pop();
     // group paragraphs that sit side by side (columns) into rows
     paras.sort((a,b)=>a.b.y0-b.b.y0);
@@ -20802,12 +20815,13 @@ $('#imgIn').addEventListener('change',e=>{const f=e.target.files&&e.target.files
 // ---------- tabs ----------
 let curTab='talk';
 function showTab(t){curTab=t;document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===t?'page':'false'));['talk','tr','review','cards','log'].forEach(k=>$('#v-'+k).hidden=k!==t);
-  if(t==='review')renderReview();if(t==='cards')renderCards();if(t==='log')renderLog();if(t==='talk')renderLines();if(t==='tr')renderTr();}
+  if(t==='review')renderReview();if(t==='cards')renderCards();if(t==='log')renderLog();if(t==='talk')renderLines();if(t==='tr'){renderTr();prewarm();}}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
 renderLines();updateDue();
 // warm up the translator so the first sentence is fast
 translate('hello','en-zh').catch(()=>{});
+setTimeout(()=>{if(!running)prewarm();},4000);
 })();
 </script>
 </body>
