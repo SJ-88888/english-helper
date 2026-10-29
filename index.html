@@ -20322,7 +20322,26 @@ async function viaMyMemory(text,sl,tl){
     const j=await r.json();const t=j&&j.responseData&&j.responseData.translatedText;if(!t||/MYMEMORY WARNING|QUOTA/i.test(t))throw new Error('quota');return t.trim();}
   finally{to.done()}
 }
+let probeP=null;
+function probeProviders(){
+  if(!probeP){
+    probeP=(async()=>{
+      try{
+        const w=await Promise.any([
+          viaGoogle('hello','en','zh-CN',2500).then(()=>0),
+          viaMs(['hello'],'en','zh-CN',3500).then(()=>1)
+        ]);
+        provIdx=w;
+      }catch(e){provIdx=2;}
+      fails=0;showProv();try{localStorage.setItem('eh-prov',String(provIdx))}catch(e){}
+      return provIdx;
+    })();
+  }
+  return probeP;
+}
+try{const sp=+localStorage.getItem('eh-prov');if(sp>=0&&sp<=2)provIdx=sp;}catch(e){}
 async function withProviders(fns){
+  await Promise.race([probeProviders(),new Promise(r=>setTimeout(r,1500))]);
   let last;
   for(let i=provIdx;i<PROVS.length;i++){
     const name=PROVS[i];
@@ -20342,7 +20361,7 @@ async function translate(text,dir){ // dir: 'en-zh' | 'zh-en'
   });
   tCache.set(key,out);return out;
 }
-function showProv(){$('#prov').textContent=['','微软翻译','备用翻译（慢）'][provIdx];}
+function showProv(){const el=$('#prov');if(el)el.textContent=['','微软翻译','备用翻译（慢）'][provIdx];}
 // try faster providers again every 2 minutes after a fallback
 setInterval(()=>{if(provIdx>0){viaGoogle('ok','en','zh-CN').then(()=>{provIdx=0;fails=0;showProv();}).catch(()=>{if(provIdx>1)viaMs(['ok'],'en','zh-CN').then(()=>{provIdx=1;fails=0;showProv();}).catch(()=>{});});}},120000);
 
@@ -20686,7 +20705,7 @@ async function pairsForChunks(chunks){ // -> array of pair-lists, one per chunk
   return withProviders({
     google:async()=>{const res=[];await Promise.all(chunks.map(async(c,i)=>{const j=await viaGoogle(c,'en','zh-CN',6000);res[i]=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({en:String(x[1]).trim(),zh:String(x[0]).trim()}));}));return res;},
     ms:async()=>{const res=[];for(let i=0;i<chunks.length;i+=50){const part=chunks.slice(i,i+50);const tr=await viaMs(part,'en','zh-CN',8000);part.forEach((c,k)=>res[i+k]=msPairs(c,tr[k]));}return res;},
-    mymemory:async()=>{const res=[];for(const c of chunks){const ps=[];for(const s2 of splitSent(c)){let zh='';try{zh=await viaMyMemory(s2,'en','zh-CN');}catch(e){zh='（翻译失败）';}ps.push({en:s2,zh});}res.push(ps);}return res;}
+    mymemory:async()=>Promise.all(chunks.map(c=>Promise.all(splitSent(c).map(async s2=>{let zh='';try{zh=await viaMyMemory(s2,'en','zh-CN');}catch(e){zh='（翻译失败）';}return {en:s2,zh};}))))
   });
 }
 function joinPairs(lists){
@@ -20723,8 +20742,8 @@ function renderTr(){
   if(trState.img||trState.imgMsg){
     const body=`${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片" style="display:block;width:100%;height:auto;${trState.working?'opacity:.55':''}">`:''}
       ${trState.imgMsg?`<div class="muted" id="imgMsg" style="padding:12px 14px">${trState.imgMsg}</div>`:''}
-      ${trState.img&&!trState.working?`<div class="row" style="padding:10px 14px;border-top:1px solid var(--line)"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}`;
-    h+=zone('img','图片结果',trState.took?`用时 ${trState.took} 秒 · ${trState.via}`:'',body,true);
+      ${trState.img&&!trState.working?`<div class="row" style="padding:10px 14px;border-top:1px solid var(--line)"><span class="muted" style="font-size:12px;flex:1">${trState.via?esc(trState.via)+'<br>':''}也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}`;
+    h+=zone('img','图片结果',trState.took?`共 ${trState.took} 秒`:'',body,true);
   }else if(trState.loading){
     h+=zone('pairs','翻译结果','',`<div><span class="spin"></span> ${esc(trState.loading)}</div>`);
   }
@@ -20828,9 +20847,9 @@ $('#ocrSet').onclick=()=>{
 showOcrMode();
 function canvasBlob(c,q){return new Promise(r=>c.toBlob(r,'image/jpeg',q));}
 async function ocrCloud(ocr){
-  let q=0.8,blob=await canvasBlob(ocr,q);
+  let q=0.7,blob=await canvasBlob(ocr,q);
   while(blob&&blob.size>950000&&q>0.35){q-=0.15;blob=await canvasBlob(ocr,q);}
-  const fd=new FormData();fd.append('apikey',ocrKey);fd.append('language','eng');fd.append('isOverlayRequired','true');fd.append('OCREngine','2');fd.append('file',blob,'image.jpg');
+  const fd=new FormData();fd.append('apikey',ocrKey);fd.append('language','eng');fd.append('isOverlayRequired','true');fd.append('OCREngine','1');fd.append('scale','false');fd.append('detectOrientation','false');fd.append('file',blob,'image.jpg');
   const to=withTimeout(10000);
   try{
     const r=await fetch('https://api.ocr.space/parse/image',{method:'POST',body:fd,signal:to.signal});
@@ -20928,7 +20947,7 @@ async function runImageTr(file){
       const dark=sum/(px.length/16)<115;
       for(let i=0;i<px.length;i+=4){let g=px[i]*.299+px[i+1]*.587+px[i+2]*.114;if(dark)g=255-g;px[i]=px[i+1]=px[i+2]=g;}
       octx.putImageData(id,0,0);}catch(e){}
-    let lines=null,via='手机识别';
+    const tPrep=performance.now();let lines=null,via='手机识别';
     if(ocrKey){
       setMsg('<span class="spin"></span> 正在云端识别文字…');
       try{lines=await ocrCloud(ocr);via='云端识别';}
@@ -20939,6 +20958,7 @@ async function runImageTr(file){
       ocrProg=m=>{if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
       lines=await ocrLocal(ocr,octx,W,H);
     }
+    const tOcr=performance.now();
     const paras=buildParas(lines);
     if(!paras.length){trState={imgMsg:'这张图片里没认出英文。换一张更清晰、文字更大的试试。'};trBusy=false;renderTr();return;}
     setMsg(`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`);
@@ -20947,8 +20967,10 @@ async function runImageTr(file){
     const allPairs=[];
     paras.forEach((p,i)=>{const pr=results[i]||[];p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});});
     allPairs.pop();
+    const tTr=performance.now();
     outBlob=await composeImage(src,W,H,paras);
-    trState={img:URL.createObjectURL(outBlob),pairs:allPairs,took:((performance.now()-t0)/1000).toFixed(1),via};
+    const f=x=>(x/1000).toFixed(1);
+    trState={img:URL.createObjectURL(outBlob),pairs:allPairs,took:f(performance.now()-t0),via:`${via} ${f(tOcr-tPrep)}s · 翻译 ${f(tTr-tOcr)}s（${['Google','微软','备用'][provIdx]}）`};
   }catch(e){
     console.warn(e);ocrProg=null;
     trState={imgMsg:'识别失败：'+(e&&e.message==='load'?'识别组件下载不了，请检查网络（大陆可能要开 VPN）后重试':'请换一张图片再试')};
@@ -20971,7 +20993,7 @@ document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dat
 
 renderLines();updateDue();
 // warm up the translator so the first sentence is fast
-translate('hello','en-zh').catch(()=>{});
+probeProviders();
 setTimeout(()=>{if(!running)prewarm();},4000);
 })();
 </script>
