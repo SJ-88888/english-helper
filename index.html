@@ -88,7 +88,7 @@ body.live .mic{background:var(--danger);color:#fff}
 .side{display:flex;flex-direction:column;gap:6px;justify-self:end;align-items:stretch}
 .status{grid-column:1/-1;text-align:center;font-size:12px;color:var(--muted);min-height:16px}
 
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabs button{min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted);position:relative}
 .tabs button svg{width:22px;height:22px}
 .tabs button[aria-current="page"]{color:var(--fg);font-weight:700}
@@ -148,6 +148,23 @@ body.live .tabs{display:none}
 .sheet textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;font-size:18px;background:var(--bg);color:var(--fg)}
 .row{display:flex;gap:8px;align-items:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13px;z-index:40;max-width:84%;text-align:center}
+/* translate tab */
+.trbox{display:flex;flex-direction:column;gap:10px;padding-block:16px 8px}
+#trIn{width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--f-read);font-size:16px;line-height:1.45;background:var(--surface);color:var(--fg);resize:vertical}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.imgcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-block:8px}
+.imgcard img{display:block;width:100%;height:auto}
+.sect{padding-block:16px 0}
+.pairs{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.pair .en{font-family:var(--f-read);font-size:18px;line-height:1.45;overflow-wrap:anywhere}
+.pair .zh{font-size:15px;color:var(--muted);line-height:1.5;margin-top:2px}
+.pairs hr{border:0;border-top:1px dashed var(--line);margin:2px 0;width:100%}
+.say{vertical-align:-3px;color:var(--muted)}
+.seg2{display:inline-flex;background:var(--sunk);border-radius:999px;padding:3px}
+.seg2 button{min-height:30px;padding:0 11px;border-radius:999px;font-size:13px;color:var(--muted)}
+.seg2 button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:700}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important}}
 </style>
 </head>
@@ -175,12 +192,20 @@ body.live .tabs{display:none}
         <div class="status" id="status">点麦克风开始，手机平放在两人中间</div>
       </div>
     </section>
+    <section class="view" id="v-tr" hidden><div class="scroll pad" id="trScroll">
+      <div class="trbox">
+        <textarea id="trIn" placeholder="粘贴或输入英文…" autocapitalize="sentences" spellcheck="false"></textarea>
+        <div class="row"><label class="btn" for="imgIn"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>图片翻译</label><input type="file" id="imgIn" class="vh" accept="image/*"><span style="flex:1"></span><button class="btn sm" id="trClear">清空</button><button class="btn pri" id="trGo">翻译</button></div>
+      </div>
+      <div id="trOut"></div>
+    </div></section>
     <section class="view" id="v-review" hidden><div class="scroll pad" id="reviewScroll"></div></section>
     <section class="view" id="v-cards" hidden><div class="scroll pad" id="cardsScroll"></div></section>
     <section class="view" id="v-log" hidden><div class="scroll pad" id="logScroll"></div></section>
   </main>
   <nav class="tabs" aria-label="主菜单">
     <button data-tab="talk" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>对话</button>
+    <button data-tab="tr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h9M7.5 3v2M5 9c1.4 2.8 3.6 4.6 6.5 5.6M10.5 5c-.9 4-3.2 7.2-7 9"/><path d="M13 21l4-10 4 10M14.5 17.5h5"/></svg>翻译</button>
     <button data-tab="review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M10 20V4M15 20v-7M20 20v-4"/></svg>复盘</button>
     <button data-tab="cards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>背词<span class="badge" id="dueBadge" hidden>0</span></button>
     <button data-tab="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>记录</button>
@@ -20467,8 +20492,8 @@ function wordSheet(w,ex){
    ${d?`<div class="eyebrow">COCA 常用词排名 第 ${d.r} 位</div>`:''}<div class="mean">${d?esc(d.zh):''}</div>
    <div class="row" style="margin-top:6px">${v&&v.status==='learning'?'<span class="state">已在背词本里</span>':'<button class="btn pri" id="wsAdd">加入背词</button>'}<button class="btn" id="wsKnown">我认识</button><span style="flex:1"></span><button class="btn" id="wsClose">关闭</button></div>`);
   $('#wsSay').onclick=()=>speak(w);
-  const a=$('#wsAdd');if(a)a.onclick=()=>{setVocab(w,{status:'learning',box:0,due:Date.now(),ex});closeSheet();updateDue();toast('已加入背词');};
-  $('#wsKnown').onclick=()=>{setVocab(w,{status:'known'});closeSheet();renderLines();toast('以后不再标黄');};
+  const a=$('#wsAdd');if(a)a.onclick=()=>{setVocab(w,{status:'learning',box:0,due:Date.now(),ex});closeSheet();updateDue();if(curTab==='tr')renderTr();toast('已加入背词');};
+  $('#wsKnown').onclick=()=>{setVocab(w,{status:'known'});closeSheet();renderLines();if(curTab==='tr')renderTr();toast('以后不再标黄');};
   $('#wsClose').onclick=closeSheet;
 }
 function openSheet(h){const s=$('#sheet');s.innerHTML=h;s.hidden=false;$('#scrim').hidden=false;}
@@ -20586,10 +20611,198 @@ $('#logScroll').addEventListener('click',e=>{
     SESS=SESS.filter(s=>s.id!==d.dataset.del);saveSessions();delArm=null;renderLog();toast('已删除');}
 });
 
+// ---------- 翻译 tab: text & image ----------
+let trState=null, trSort='rank', trAll=false, trBusy=false;
+async function translatePairs(text){
+  // returns [{en, zh}] aligned by sentence
+  const paras=text.replace(/\r/g,'').split(/\n\s*\n|\n/).map(s=>s.trim()).filter(Boolean);
+  const chunks=[];
+  for(const p of paras){
+    if(p.length<=1200){chunks.push(p);continue;}
+    let buf='';for(const s of (p.match(/[^.?!]+[.?!]*["')\]]*\s*/g)||[p])){if((buf+s).length>1200&&buf){chunks.push(buf.trim());buf='';}buf+=s;}if(buf.trim())chunks.push(buf.trim());
+  }
+  const out=[];
+  for(const c of chunks){
+    let pairs=null;
+    if(pref==='google'){
+      try{
+        const to=withTimeout(6000);
+        try{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=en&tl=zh-CN&q='+encodeURIComponent(c),{signal:to.signal});
+          if(!r.ok)throw new Error('http');const j=await r.json();
+          pairs=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({en:String(x[1]).trim(),zh:String(x[0]).trim()}));gFails=0;}
+        finally{to.done()}
+      }catch(e){gFails++;if(gFails>=2){pref='mymemory';showProv();}pairs=null;}
+    }
+    if(!pairs){
+      pairs=[];
+      for(const s of (c.match(/[^.?!]+[.?!]*["')\]]*/g)||[c]).map(x=>x.trim()).filter(Boolean)){
+        let zh='';try{zh=await viaMyMemory(s,'en','zh-CN');}catch(e){zh='（翻译失败）';}
+        pairs.push({en:s,zh});
+      }
+    }
+    // merge tiny fragments (e.g. a lone quote) into the previous sentence
+    for(const p of pairs){if(out.length&&!/[A-Za-z]{2}/.test(p.en)&&out[out.length-1]._c===c){out[out.length-1].en+=' '+p.en;out[out.length-1].zh+=p.zh;}else out.push({en:p.en,zh:p.zh,_c:c});}
+    out.push({br:true});
+  }
+  out.pop();
+  return out;
+}
+function wordsOf(pairs){
+  const map=new Map();let total=0;
+  for(const p of pairs){if(p.br)continue;for(const tok of tokens(p.en)){total++;const lem=norm(tok);if(!lem||lem.length<2||STOP.has(lem))continue;const d=DICT.get(lem);if(!d)continue;
+    let e=map.get(lem);if(!e){e={w:lem,d,n:0,ex:p.en,exZh:p.zh,src:tok};map.set(lem,e)}e.n++;}}
+  const all=[...map.values()];
+  const fresh=all.filter(e=>{const v=vocab[e.w];return !(v&&v.status==='known')&&e.d.r>settings.level;});
+  return {all,fresh,total};
+}
+function trWordRow(e){
+  const v=vocab[e.w];const st=v&&v.status;
+  return `<div class="wrow" data-w="${esc(e.w)}"><div class="rank">#${e.d.r}<small>常用排名</small></div>
+  <div class="wtop"><span class="word">${esc(e.w)}</span>${e.d.ph?`<span class="ph">/${esc(e.d.ph)}/</span>`:''}${e.d.lv?`<span class="lvl">${LEVELS[e.d.lv]}</span>`:''}<span class="cnt">本文 ×${e.n}</span></div>
+  <div class="mean">${esc(e.d.zh)}</div><div class="ex">${hlEx(e.ex,e.src)}</div>
+  <div class="wact"><button class="btn sm" data-act="say">${ICON.play}</button>${st==='learning'?'<span class="state">✓ 背词中</span>':st==='known'?'<span class="state">✓ 已掌握</span>':'<button class="btn sm pri" data-act="learn">背它</button><button class="btn sm" data-act="known">我认识</button>'}</div></div>`;
+}
+function renderTr(){
+  const box=$('#trOut');
+  if(!trState){box.innerHTML=`<div class="note-box">粘贴英文点「翻译」：逐句给中文，黄色标出超出你词汇量的词，最后汇总词频。<br>点「图片翻译」选一张有英文的照片或截图：识别文字，把中文排在每段英文下面，生成一张新图片。</div>`;return;}
+  let h='';
+  if(trState.img||trState.imgMsg){
+    h+=`<div class="imgcard">${trState.img?`<img id="trImg" src="${trState.img}" alt="翻译后的图片">`:''}${trState.imgMsg?`<div class="muted" style="padding:12px">${trState.imgMsg}</div>`:''}
+    ${trState.img?`<div class="row" style="padding:10px"><span class="muted" style="font-size:12px;flex:1">也可以长按图片存到相册</span><button class="btn sm pri" id="trSave">保存图片</button></div>`:''}</div>`;
+  }
+  if(trState.pairs&&trState.pairs.length){
+    const W=wordsOf(trState.pairs);
+    const list=(trAll?W.all:W.fresh).slice().sort(trSort==='rank'?(a,b)=>a.d.r-b.d.r:(a,b)=>b.n-a.n||a.d.r-b.d.r);
+    const learnable=W.fresh.filter(e=>!vocab[e.w]).length;
+    h+=`<div class="sect"><div class="eyebrow">逐句翻译</div><div class="pairs">${trState.pairs.map(p=>p.br?'<hr>':`<div class="pair"><div class="en">${markWords(p.en)} <button class="say" data-say="${esc(p.en)}" aria-label="朗读">${ICON.play}</button></div><div class="zh">${esc(p.zh)}</div></div>`).join('')}</div></div>
+    <div class="sect"><div class="eyebrow">词频总结</div>
+    <div class="stats" style="margin-top:8px"><div class="stat"><b class="mono">${W.total}</b><span>总词数</span></div><div class="stat"><b class="mono">${W.all.length}</b><span>不同实词</span></div><div class="stat"><b class="mono">${W.fresh.length}</b><span>生词</span></div></div>
+    <div class="toolbar"><div class="seg2"><button data-sort="rank" aria-pressed="${trSort==='rank'}">按常用程度</button><button data-sort="count" aria-pressed="${trSort==='count'}">按本文次数</button></div>
+    <button class="btn sm" data-act="toggleAll">${trAll?'只看生词':'看全部词'}</button>${learnable?`<button class="btn sm pri" data-act="all">全部背</button>`:''}</div>
+    <div class="list">${list.length?list.map(trWordRow).join(''):'<div class="empty">没有超出你词汇量的词</div>'}</div></div>`;
+  }else if(trState.loading){
+    h+=`<div class="empty"><span class="spin"></span> ${esc(trState.loading)}</div>`;
+  }
+  box.innerHTML=h;
+  const sv=$('#trSave');if(sv)sv.onclick=saveImg;
+}
+async function runTextTr(){
+  const text=$('#trIn').value.trim();if(!text){toast('先粘贴一段英文');return;}
+  if(trBusy)return;trBusy=true;$('#trIn').blur();
+  trState={loading:'正在翻译…'};renderTr();
+  try{trState={pairs:await translatePairs(text)};}catch(e){trState={imgMsg:'翻译失败，请检查网络后重试'};}
+  trBusy=false;renderTr();
+}
+$('#trGo').onclick=runTextTr;
+$('#trClear').onclick=()=>{$('#trIn').value='';trState=null;renderTr();};
+$('#trOut').addEventListener('click',e=>{
+  const sy=e.target.closest('[data-say]');if(sy){speak(sy.dataset.say);return;}
+  const w=e.target.closest('.w');if(w){const pr=w.closest('.pair');wordSheet(w.dataset.w,pr?pr.querySelector('.en').textContent.trim():'');return;}
+  const so=e.target.closest('[data-sort]');if(so){trSort=so.dataset.sort;renderTr();return;}
+  const a=e.target.closest('[data-act]');if(!a||!trState||!trState.pairs)return;const act=a.dataset.act;
+  if(act==='toggleAll'){trAll=!trAll;renderTr();return;}
+  const W=wordsOf(trState.pairs);
+  if(act==='all'){let k=0;for(const x of W.fresh)if(!vocab[x.w]){vocab[x.w]={word:x.w,added:Date.now(),status:'learning',box:0,due:Date.now(),ex:x.ex,exZh:x.exZh};k++;}saveVocab();updateDue();toast(`加入了 ${k} 个词`);renderTr();return;}
+  const row=a.closest('.wrow');if(!row)return;const wd=row.dataset.w;
+  if(act==='say'){speak(wd);return;}
+  const x=W.all.find(y=>y.w===wd);
+  if(act==='learn')setVocab(wd,{status:'learning',box:0,due:Date.now(),ex:x?x.ex:'',exZh:x?x.exZh:''});
+  if(act==='known')setVocab(wd,{status:'known'});
+  updateDue();renderTr();
+});
+
+// ----- image: OCR in the browser, translation strips under each paragraph -----
+let ocrWorker=null, ocrProg=null, outBlob=null;
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('load'));document.head.appendChild(s);});}
+async function getWorker(){
+  if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  if(!ocrWorker)ocrWorker=await Tesseract.createWorker('eng',1,{logger:m=>{if(ocrProg)ocrProg(m)}});
+  return ocrWorker;
+}
+function loadImage(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=u;});}
+function wrapText(ctx,text,maxW){
+  const lines=[];let line='';
+  for(const ch of Array.from(text)){const t=line+ch;if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=ch.trim()?ch:'';}else line=t;}
+  if(line)lines.push(line);return lines;
+}
+async function runImageTr(file){
+  if(trBusy)return;trBusy=true;
+  trState={imgMsg:'<span class="spin"></span> 准备识别（第一次要下载约 10MB 识别数据）…'};renderTr();
+  try{
+    const im=await loadImage(file);
+    const scale=Math.min(1,1800/Math.max(im.naturalWidth,1));
+    const W=Math.round(im.naturalWidth*scale),H=Math.round(im.naturalHeight*scale);
+    const src=document.createElement('canvas');src.width=W;src.height=H;src.getContext('2d').drawImage(im,0,0,W,H);
+    ocrProg=m=>{if(m.status==='recognizing text'){trState.imgMsg=`<span class="spin"></span> 正在识别文字 ${Math.round(m.progress*100)}%`;renderTr();}};
+    const worker=await getWorker();
+    trState.imgMsg='<span class="spin"></span> 正在识别文字…';renderTr();
+    const {data}=await worker.recognize(src);
+    ocrProg=null;
+    let paras=(data.paragraphs||[]).map(p=>{
+      const text=(p.lines||[]).map(l=>l.text.trim()).join(' ').replace(/(\w)-\s+(\w)/g,'$1$2').replace(/\s+/g,' ').trim();
+      const hs=(p.lines||[]).map(l=>l.bbox.y1-l.bbox.y0).sort((a,b)=>a-b);
+      return {text,b:p.bbox,lh:hs.length?hs[Math.floor(hs.length/2)]:20,conf:p.confidence};
+    }).filter(p=>(p.text.match(/[A-Za-z]/g)||[]).length>=3&&p.conf>35);
+    if(!paras.length){trState={imgMsg:'这张图片里没认出英文。换一张更清晰、文字更大的试试。'};trBusy=false;renderTr();return;}
+    trState.imgMsg=`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`;renderTr();
+    const allPairs=[];
+    for(const p of paras){const pr=await translatePairs(p.text);p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});}
+    allPairs.pop();
+    // group paragraphs that sit side by side (columns) into rows
+    paras.sort((a,b)=>a.b.y0-b.b.y0);
+    const groups=[];
+    for(const p of paras){const g=groups[groups.length-1];if(g&&p.b.y0<g.y1-4){g.items.push(p);g.y1=Math.max(g.y1,p.b.y1);}else groups.push({items:[p],y0:p.b.y0,y1:p.b.y1});}
+    const meas=document.createElement('canvas').getContext('2d');
+    const FONT='"PingFang SC","Hiragino Sans GB",-apple-system,sans-serif';
+    for(const g of groups){
+      let hMax=0;
+      for(const p of g.items){
+        p.fs=Math.max(15,Math.min(46,Math.round(p.lh*0.82)));
+        p.x=Math.max(8,p.b.x0);
+        const width=Math.min(W-p.x-8,Math.max(p.b.x1-p.b.x0,W*0.45));
+        meas.font=`600 ${p.fs}px ${FONT}`;
+        p.lines=wrapText(meas,p.zh,width);
+        hMax=Math.max(hMax,p.lines.length*p.fs*1.35);
+      }
+      g.h=Math.ceil(hMax+16);
+    }
+    let Ht=H+groups.reduce((a,g)=>a+g.h,0);
+    const k=Math.min(1,Math.sqrt(15e6/(W*Ht)));
+    const out=document.createElement('canvas');out.width=Math.round(W*k);out.height=Math.round(Ht*k);
+    const ctx=out.getContext('2d');ctx.scale(k,k);
+    let sy=0,dy=0;
+    groups.forEach((g,i)=>{
+      const next=groups[i+1];
+      let cut=Math.min(H,g.y1+6);if(next&&next.y0>g.y1)cut=Math.min(cut,next.y0);
+      cut=Math.max(cut,sy);
+      if(cut>sy){ctx.drawImage(src,0,sy,W,cut-sy,0,dy,W,cut-sy);dy+=cut-sy;sy=cut;}
+      ctx.fillStyle='#FFF6CF';ctx.fillRect(0,dy,W,g.h);
+      ctx.fillStyle='#E8D89A';ctx.fillRect(0,dy,W,1);ctx.fillRect(0,dy+g.h-1,W,1);
+      ctx.fillStyle='#2A2310';ctx.textBaseline='top';
+      for(const p of g.items){ctx.font=`600 ${p.fs}px ${FONT}`;p.lines.forEach((ln,j)=>ctx.fillText(ln,p.x,dy+8+j*p.fs*1.35));}
+      dy+=g.h;
+    });
+    if(sy<H)ctx.drawImage(src,0,sy,W,H-sy,0,dy,W,H-sy);
+    outBlob=await new Promise(r=>out.toBlob(r,'image/jpeg',0.9));
+    trState={img:URL.createObjectURL(outBlob),pairs:allPairs};
+  }catch(e){
+    console.warn(e);ocrProg=null;
+    trState={imgMsg:'识别失败：'+(e&&e.message==='load'?'识别组件下载不了，请检查网络（大陆可能要开 VPN）后重试':'请换一张图片再试')};
+  }
+  trBusy=false;renderTr();
+}
+async function saveImg(){
+  if(!outBlob)return;
+  const f=new File([outBlob],'英语小助手-翻译.jpg',{type:'image/jpeg'});
+  try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+  toast('长按图片，选「存储到照片」');
+}
+$('#imgIn').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(f)runImageTr(f);});
+
 // ---------- tabs ----------
 let curTab='talk';
-function showTab(t){curTab=t;document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===t?'page':'false'));['talk','review','cards','log'].forEach(k=>$('#v-'+k).hidden=k!==t);
-  if(t==='review')renderReview();if(t==='cards')renderCards();if(t==='log')renderLog();if(t==='talk')renderLines();}
+function showTab(t){curTab=t;document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===t?'page':'false'));['talk','tr','review','cards','log'].forEach(k=>$('#v-'+k).hidden=k!==t);
+  if(t==='review')renderReview();if(t==='cards')renderCards();if(t==='log')renderLog();if(t==='talk')renderLines();if(t==='tr')renderTr();}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
 renderLines();updateDue();
