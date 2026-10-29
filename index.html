@@ -20738,20 +20738,41 @@ $('#trOut').addEventListener('click',e=>{
 // ----- image: OCR in the browser, translation strips under each paragraph -----
 let ocrWorker=null, ocrProg=null, outBlob=null;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('load'));document.head.appendChild(s);});}
-let workerP=null;
-function getWorker(){
-  if(!workerP){
-    workerP=(async()=>{
+const OCR_N=3;
+let poolP=null, pool=[];
+function getPool(){
+  if(!poolP){
+    poolP=(async()=>{
       if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
-      ocrWorker=await Tesseract.createWorker('eng',1,{langPath:'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@4.1.0',gzip:false,cachePath:'fast-4.1.0',logger:m=>{if(ocrProg)ocrProg(m)}});
-      return ocrWorker;
+      const opts={langPath:'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_fast@4.1.0',gzip:false,cachePath:'fast-4.1.0',logger:m=>{if(ocrProg)ocrProg(m)}};
+      const mk=async()=>{const w=await Tesseract.createWorker('eng',1,opts);await w.setParameters({tessedit_pageseg_mode:'3'});return w;};
+      pool=[await mk()];ocrWorker=pool[0];
+      const rest=await Promise.all(Array.from({length:OCR_N-1},()=>mk().catch(()=>null)));
+      pool.push(...rest.filter(Boolean));
+      return pool;
     })();
-    workerP.catch(()=>{workerP=null;});
+    poolP.catch(()=>{poolP=null;});
   }
-  return workerP;
+  return poolP;
 }
-// preload the recognizer in the background so a photo starts recognizing immediately
-function prewarm(){getWorker().catch(()=>{});}
+// preload the recognizers in the background so a photo starts recognizing immediately
+function prewarm(){getPool().catch(()=>{});}
+// cut the image into horizontal slices at blank rows, so no text line is split
+function sliceRows(ctx,W,H,n){
+  if(n<=1)return [[0,H]];
+  const id=ctx.getImageData(0,0,W,H).data;
+  const blank=new Uint8Array(H);
+  for(let y=0;y<H;y++){let mn=255,mx=0;const o=y*W*4;for(let x=0;x<W;x+=2){const g=id[o+x*4];if(g<mn)mn=g;if(g>mx)mx=g;}blank[y]=(mx-mn)<40?1:0;}
+  const cuts=[0];
+  for(let k=1;k<n;k++){
+    const t=Math.round(H*k/n), win=Math.round(H/n*0.25);let best=-1;
+    for(let d=0;d<=win&&best<0;d++){if(blank[t+d])best=t+d;else if(blank[t-d])best=t-d;}
+    if(best>cuts[cuts.length-1]+40)cuts.push(best);
+  }
+  cuts.push(H);
+  const out=[];for(let i=0;i<cuts.length-1;i++)out.push([cuts[i],cuts[i+1]]);
+  return out;
+}
 function loadImage(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=u;});}
 function wrapText(ctx,text,maxW){
   const lines=[];let line='';
@@ -20764,21 +20785,30 @@ async function runImageTr(file){
   trState={imgMsg:'<span class="spin"></span> 准备识别…'};renderTr();
   try{
     const im=await loadImage(file);
-    const scale=Math.min(1,1280/Math.max(im.naturalWidth,1),Math.sqrt(2.4e6/Math.max(1,im.naturalWidth*im.naturalHeight)));
+    const scale=Math.min(1,1000/Math.max(im.naturalWidth,1),Math.sqrt(1.6e6/Math.max(1,im.naturalWidth*im.naturalHeight)));
     const W=Math.round(im.naturalWidth*scale),H=Math.round(im.naturalHeight*scale);
     const src=document.createElement('canvas');src.width=W;src.height=H;src.getContext('2d').drawImage(im,0,0,W,H);
     trState={img:im.src,imgMsg:'<span class="spin"></span> 正在识别文字…',working:true};renderTr();
     let lastP=-1;
     ocrProg=m=>{if(m.status==='recognizing text'){const pc=Math.round(m.progress*100);if(pc-lastP>=10){lastP=pc;setMsg(`<span class="spin"></span> 正在识别文字 ${pc}%`);}}else if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
-    const worker=await getWorker();
+    const workers=await getPool();
     // dark-mode screenshots: recognise on an inverted grey copy (much more accurate)
     const ocr=document.createElement('canvas');ocr.width=W;ocr.height=H;const octx=ocr.getContext('2d');octx.drawImage(src,0,0);
     try{const id=octx.getImageData(0,0,W,H),px=id.data;let sum=0;for(let i=0;i<px.length;i+=16)sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;
       const dark=sum/(px.length/16)<115;
       for(let i=0;i<px.length;i+=4){let g=px[i]*.299+px[i+1]*.587+px[i+2]*.114;if(dark)g=255-g;px[i]=px[i+1]=px[i+2]=g;}
       octx.putImageData(id,0,0);}catch(e){}
-    const {data}=await worker.recognize(ocr);
-    ocrProg=null;
+    // recognise slices in parallel, one per recognizer
+    const slices=sliceRows(octx,W,H,H>500?workers.length:1);
+    let doneN=0;ocrProg=null;setMsg(`<span class="spin"></span> 正在识别文字…`);
+    const parts=await Promise.all(slices.map(async([y0,y1],i)=>{
+      const c=document.createElement('canvas');c.width=W;c.height=y1-y0;c.getContext('2d').drawImage(ocr,0,y0,W,y1-y0,0,0,W,y1-y0);
+      const w=workers[i%workers.length];
+      const r=await w.recognize(c,{},{text:false,blocks:true,hocr:false,tsv:false});
+      doneN++;if(slices.length>1)setMsg(`<span class="spin"></span> 正在识别文字 ${doneN}/${slices.length}`);
+      return (r.data.lines||[]).map(l=>({text:l.text,confidence:l.confidence,bbox:{x0:l.bbox.x0,x1:l.bbox.x1,y0:l.bbox.y0+y0,y1:l.bbox.y1+y0}}));
+    }));
+    const data={lines:parts.flat()};
     // keep only lines that read like English, then group neighbouring lines into paragraphs
     const good=(data.lines||[]).filter(l=>{
       const t=(l.text||'').trim();if(!t||l.confidence<55)return false;
