@@ -183,6 +183,7 @@ body.live .tabs{display:none}
 .seg2 button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:700}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.updbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 58px);z-index:50;background:var(--me);color:var(--bg);font-weight:700;font-size:14px;padding:10px 16px;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.2);white-space:nowrap}
 @media (prefers-reduced-motion: reduce){*{animation:none!important}}
 </style>
 </head>
@@ -21005,6 +21006,15 @@ document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dat
 renderLines();updateDue();
 // warm up the translator so the first sentence is fast
 probeProviders();
+// new-version notice: the page can be cached for a while, so check a tiny version file
+const APP_VER='20261029210931';
+async function checkUpdate(){
+  try{const r=await fetch('version.txt?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.text()).trim();
+    if(v&&v!==APP_VER&&!document.getElementById('upd')){document.body.insertAdjacentHTML('beforeend','<button id="upd" class="updbar">有新版本，点这里更新</button>');
+      document.getElementById('upd').onclick=()=>{if(running)stopListening();location.replace(location.pathname+'?v='+encodeURIComponent(v));};}}catch(e){}
+}
+checkUpdate();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkUpdate();});
 setTimeout(()=>{if(!running)prewarm();},4000);
 })();
 </script>
