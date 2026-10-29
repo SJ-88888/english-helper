@@ -20264,14 +20264,29 @@ function saveSessions(){save('eh-sessions',SESS)}
 function saveVocab(){save('eh-vocab',vocab)}
 function setVocab(w,patch){vocab[w]=Object.assign({word:w,added:Date.now()},vocab[w],patch);saveVocab();}
 
-// ---------- translation (Google, fallback MyMemory) ----------
+// ---------- translation: Google -> Microsoft -> MyMemory ----------
 const tCache=new Map();
-let pref='google', gFails=0;
+const PROVS=['google','ms','mymemory'];
+let provIdx=0, fails=0;
 function withTimeout(ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return {signal:c.signal,done:()=>clearTimeout(t)}}
-async function viaGoogle(text,sl,tl){
-  const to=withTimeout(2500);
+const MS_LANG={'en':'en','zh-CN':'zh-Hans'};
+async function viaGoogle(text,sl,tl,ms){
+  const to=withTimeout(ms||2500);
   try{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl='+sl+'&tl='+tl+'&q='+encodeURIComponent(text),{signal:to.signal});
-    if(!r.ok)throw new Error('http '+r.status);const j=await r.json();return (j[0]||[]).map(x=>x&&x[0]||'').join('').trim();}
+    if(!r.ok)throw new Error('http '+r.status);return await r.json();}
+  finally{to.done()}
+}
+let msTok=null,msExp=0,msTokP=null;
+async function msToken(){
+  if(msTok&&Date.now()<msExp)return msTok;
+  if(!msTokP)msTokP=(async()=>{const to=withTimeout(4000);try{const r=await fetch('https://edge.microsoft.com/translate/auth',{signal:to.signal});if(!r.ok)throw new Error('auth');const t=(await r.text()).trim();if(t.length<20)throw new Error('auth');msTok=t;msExp=Date.now()+8*60000;return t;}finally{to.done();msTokP=null;}})();
+  return msTokP;
+}
+async function viaMs(texts,sl,tl,ms){ // texts: array; returns translation objects
+  const tok=await msToken();const to=withTimeout(ms||4000);
+  try{const r=await fetch('https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&includeSentenceLength=true&from='+MS_LANG[sl]+'&to='+MS_LANG[tl],{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(texts.map(t=>({Text:t}))),signal:to.signal});
+    if(r.status===401){msTok=null;throw new Error('auth');}
+    if(!r.ok)throw new Error('http '+r.status);const j=await r.json();return j.map(x=>x.translations[0]);}
   finally{to.done()}
 }
 async function viaMyMemory(text,sl,tl){
@@ -20280,22 +20295,29 @@ async function viaMyMemory(text,sl,tl){
     const j=await r.json();const t=j&&j.responseData&&j.responseData.translatedText;if(!t||/MYMEMORY WARNING|QUOTA/i.test(t))throw new Error('quota');return t.trim();}
   finally{to.done()}
 }
+async function withProviders(fns){
+  let last;
+  for(let i=provIdx;i<PROVS.length;i++){
+    const name=PROVS[i];
+    try{const r=await fns[name]();if(name===PROVS[provIdx])fails=0;return r;}
+    catch(e){last=e;if(name===PROVS[provIdx]){fails++;if(fails>=2&&provIdx<PROVS.length-1){provIdx++;fails=0;showProv();}}}
+  }
+  throw last||new Error('fail');
+}
 async function translate(text,dir){ // dir: 'en-zh' | 'zh-en'
   text=text.trim();if(!text)return'';
   const key=dir+'|'+text;if(tCache.has(key))return tCache.get(key);
   const [sl,tl]=dir==='en-zh'?['en','zh-CN']:['zh-CN','en'];
-  let out='';
-  if(pref==='google'){
-    try{out=await viaGoogle(text,sl,tl);gFails=0;}
-    catch(e){gFails++;if(gFails>=2){pref='mymemory';showProv();}out=await viaMyMemory(text,sl,tl);}
-  }else{
-    out=await viaMyMemory(text,sl,tl);
-  }
+  const out=await withProviders({
+    google:async()=>{const j=await viaGoogle(text,sl,tl);return (j[0]||[]).map(x=>x&&x[0]||'').join('').trim();},
+    ms:async()=>(await viaMs([text],sl,tl))[0].text.trim(),
+    mymemory:()=>viaMyMemory(text,sl,tl)
+  });
   tCache.set(key,out);return out;
 }
-function showProv(){$('#prov').textContent=pref==='google'?'':'备用翻译';}
-// try Google again every 2 minutes after a fallback
-setInterval(()=>{if(pref!=='google'){viaGoogle('ok','en','zh-CN').then(()=>{pref='google';gFails=0;showProv();}).catch(()=>{})}},120000);
+function showProv(){$('#prov').textContent=['','微软翻译','备用翻译（慢）'][provIdx];}
+// try faster providers again every 2 minutes after a fallback
+setInterval(()=>{if(provIdx>0){viaGoogle('ok','en','zh-CN').then(()=>{provIdx=0;fails=0;showProv();}).catch(()=>{if(provIdx>1)viaMs(['ok'],'en','zh-CN').then(()=>{provIdx=1;fails=0;showProv();}).catch(()=>{});});}},120000);
 
 // ---------- speech recognition ----------
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -20365,7 +20387,7 @@ function updateLive(){
   liveWant=p;pumpLive();scrollDown();
 }
 function pumpLive(){
-  if(liveBusy||!liveWant||liveWant===liveShown||pref!=='google')return;
+  if(liveBusy||!liveWant||liveWant===liveShown||provIdx>1)return;
   const wait=Math.max(0,450-(Date.now()-liveLast));
   liveBusy=true;
   setTimeout(()=>{
@@ -20410,7 +20432,11 @@ const EXAMPLE={id:'example',example:true,start:Date.now()-26*60000,end:Date.now(
  {sp:'them',en:"That makes sense. If you can commit to a larger volume, we could adjust the price.",zh:"有道理。如果你们能承诺更大的采购量，我们可以调整价格。"},
  {sp:'me',en:"Let me check with my team and get back to you by Friday.",zh:"我和团队确认一下，周五前回复你。"}
 ]};
-function markWords(en){return esc(en).replace(/[A-Za-z]+(?:(?:&#39;|’)[A-Za-z]+)?/g,tok=>{const lem=norm(tok.replace(/&#39;/g,"'"));return isNewWord(lem)?`<button class="w" data-w="${esc(lem)}">${tok}</button>`:tok;});}
+function markWords(en){
+  const re=/[A-Za-z]+(?:['’][A-Za-z]+)?/g;let out='',last=0,m;
+  while((m=re.exec(en))){out+=esc(en.slice(last,m.index));const tok=m[0];const lem=norm(tok);out+=isNewWord(lem)?`<button class="w" data-w="${esc(lem)}">${esc(tok)}</button>`:esc(tok);last=m.index+tok.length;}
+  return out+esc(en.slice(last));
+}
 function lineHTML(l,isEx){
   const zh=l.zh?esc(l.zh):(l.err?'<span style="color:var(--danger)">翻译失败，点这里重试</span>':'…');
   return `<div class="ln ${l.sp}" data-id="${l.id||''}"><div class="en"><span class="who">${l.sp==='me'?'我':'对方'}</span><br>${markWords(l.en)}</div>
@@ -20613,40 +20639,38 @@ $('#logScroll').addEventListener('click',e=>{
 
 // ---------- 翻译 tab: text & image ----------
 let trState=null, trSort='rank', trAll=false, trBusy=false;
-async function translatePairs(text){
-  // returns [{en, zh}] aligned by sentence
+function splitSent(t){return (t.match(/[^.?!]+[.?!]*["')\]]*\s*/g)||[t]).map(x=>x.trim()).filter(Boolean);}
+function chunksOf(text){
   const paras=text.replace(/\r/g,'').split(/\n\s*\n|\n/).map(s=>s.trim()).filter(Boolean);
   const chunks=[];
   for(const p of paras){
     if(p.length<=1200){chunks.push(p);continue;}
-    let buf='';for(const s of (p.match(/[^.?!]+[.?!]*["')\]]*\s*/g)||[p])){if((buf+s).length>1200&&buf){chunks.push(buf.trim());buf='';}buf+=s;}if(buf.trim())chunks.push(buf.trim());
+    let buf='';for(const s2 of splitSent(p)){if((buf+' '+s2).length>1200&&buf){chunks.push(buf.trim());buf='';}buf+=' '+s2;}if(buf.trim())chunks.push(buf.trim());
   }
-  const out=[];
-  for(const c of chunks){
-    let pairs=null;
-    if(pref==='google'){
-      try{
-        const to=withTimeout(6000);
-        try{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=en&tl=zh-CN&q='+encodeURIComponent(c),{signal:to.signal});
-          if(!r.ok)throw new Error('http');const j=await r.json();
-          pairs=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({en:String(x[1]).trim(),zh:String(x[0]).trim()}));gFails=0;}
-        finally{to.done()}
-      }catch(e){gFails++;if(gFails>=2){pref='mymemory';showProv();}pairs=null;}
-    }
-    if(!pairs){
-      pairs=[];
-      for(const s of (c.match(/[^.?!]+[.?!]*["')\]]*/g)||[c]).map(x=>x.trim()).filter(Boolean)){
-        let zh='';try{zh=await viaMyMemory(s,'en','zh-CN');}catch(e){zh='（翻译失败）';}
-        pairs.push({en:s,zh});
-      }
-    }
-    // merge tiny fragments (e.g. a lone quote) into the previous sentence
-    for(const p of pairs){if(out.length&&!/[A-Za-z]{2}/.test(p.en)&&out[out.length-1]._c===c){out[out.length-1].en+=' '+p.en;out[out.length-1].zh+=p.zh;}else out.push({en:p.en,zh:p.zh,_c:c});}
-    out.push({br:true});
-  }
-  out.pop();
-  return out;
+  return chunks;
 }
+function msPairs(src,t){
+  const sl=t.sentLen;if(!sl||!sl.srcSentLen||sl.srcSentLen.length!==sl.transSentLen.length)return [{en:src,zh:t.text}];
+  const out=[];let a=0,b=0;
+  for(let i=0;i<sl.srcSentLen.length;i++){out.push({en:src.slice(a,a+sl.srcSentLen[i]).trim(),zh:t.text.slice(b,b+sl.transSentLen[i]).trim()});a+=sl.srcSentLen[i];b+=sl.transSentLen[i];}
+  return out.filter(p=>p.en);
+}
+async function pairsForChunks(chunks){ // -> array of pair-lists, one per chunk
+  return withProviders({
+    google:async()=>{const res=[];await Promise.all(chunks.map(async(c,i)=>{const j=await viaGoogle(c,'en','zh-CN',6000);res[i]=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({en:String(x[1]).trim(),zh:String(x[0]).trim()}));}));return res;},
+    ms:async()=>{const res=[];for(let i=0;i<chunks.length;i+=50){const part=chunks.slice(i,i+50);const tr=await viaMs(part,'en','zh-CN',8000);part.forEach((c,k)=>res[i+k]=msPairs(c,tr[k]));}return res;},
+    mymemory:async()=>{const res=[];for(const c of chunks){const ps=[];for(const s2 of splitSent(c)){let zh='';try{zh=await viaMyMemory(s2,'en','zh-CN');}catch(e){zh='（翻译失败）';}ps.push({en:s2,zh});}res.push(ps);}return res;}
+  });
+}
+function joinPairs(lists){
+  const out=[];
+  lists.forEach((pairs,ci)=>{
+    for(const p of pairs){if(out.length&&!/[A-Za-z]{2}/.test(p.en)&&out[out.length-1]._c===ci){out[out.length-1].en+=' '+p.en;out[out.length-1].zh+=p.zh;}else out.push({en:p.en,zh:p.zh,_c:ci});}
+    out.push({br:true});
+  });
+  out.pop();return out;
+}
+async function translatePairs(text){return joinPairs(await pairsForChunks(chunksOf(text)));}
 function wordsOf(pairs){
   const map=new Map();let total=0;
   for(const p of pairs){if(p.br)continue;for(const tok of tokens(p.en)){total++;const lem=norm(tok);if(!lem||lem.length<2||STOP.has(lem))continue;const d=DICT.get(lem);if(!d)continue;
@@ -20737,7 +20761,7 @@ function wrapText(ctx,text,maxW){
 function setMsg(html){if(!trState)return;trState.imgMsg=html;const el=document.getElementById('imgMsg');if(el)el.innerHTML=html;else renderTr();}
 async function runImageTr(file){
   if(trBusy)return;trBusy=true;
-  trState={imgMsg:'<span class="spin"></span> 准备识别（第一次要下载约 10MB 识别数据）…'};renderTr();
+  trState={imgMsg:'<span class="spin"></span> 准备识别…'};renderTr();
   try{
     const im=await loadImage(file);
     const scale=Math.min(1,1280/Math.max(im.naturalWidth,1),Math.sqrt(2.4e6/Math.max(1,im.naturalWidth*im.naturalHeight)));
@@ -20747,17 +20771,36 @@ async function runImageTr(file){
     let lastP=-1;
     ocrProg=m=>{if(m.status==='recognizing text'){const pc=Math.round(m.progress*100);if(pc-lastP>=10){lastP=pc;setMsg(`<span class="spin"></span> 正在识别文字 ${pc}%`);}}else if(/load|initializ/.test(m.status||'')&&!ocrWorker){setMsg('<span class="spin"></span> 第一次使用，正在下载识别组件（约 4MB）…');}};
     const worker=await getWorker();
-    const {data}=await worker.recognize(src);
+    // dark-mode screenshots: recognise on an inverted grey copy (much more accurate)
+    const ocr=document.createElement('canvas');ocr.width=W;ocr.height=H;const octx=ocr.getContext('2d');octx.drawImage(src,0,0);
+    try{const id=octx.getImageData(0,0,W,H),px=id.data;let sum=0;for(let i=0;i<px.length;i+=16)sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;
+      const dark=sum/(px.length/16)<115;
+      for(let i=0;i<px.length;i+=4){let g=px[i]*.299+px[i+1]*.587+px[i+2]*.114;if(dark)g=255-g;px[i]=px[i+1]=px[i+2]=g;}
+      octx.putImageData(id,0,0);}catch(e){}
+    const {data}=await worker.recognize(ocr);
     ocrProg=null;
-    let paras=(data.paragraphs||[]).map(p=>{
-      const text=(p.lines||[]).map(l=>l.text.trim()).join(' ').replace(/(\w)-\s+(\w)/g,'$1$2').replace(/\s+/g,' ').trim();
-      const hs=(p.lines||[]).map(l=>l.bbox.y1-l.bbox.y0).sort((a,b)=>a-b);
-      return {text,b:p.bbox,lh:hs.length?hs[Math.floor(hs.length/2)]:20,conf:p.confidence};
-    }).filter(p=>(p.text.match(/[A-Za-z]/g)||[]).length>=3&&p.conf>35);
+    // keep only lines that read like English, then group neighbouring lines into paragraphs
+    const good=(data.lines||[]).filter(l=>{
+      const t=(l.text||'').trim();if(!t||l.confidence<55)return false;
+      const ws=t.split(/\s+/);const real=ws.filter(w=>/^[("'“‘]?[A-Za-z][A-Za-z'’-]*[)"'”’.,:;!?]*$/.test(w)&&w.replace(/[^A-Za-z]/g,'').length>=2);
+      if(real.length/ws.length<0.6)return false;
+      if(real.length>=2)return true;
+      const w0=norm(real[0]?real[0].replace(/[^A-Za-z']/g,''):'');return real.length===1&&ws.length<=2&&DICT.has(w0)&&l.confidence>75;
+    }).map(l=>({t:l.text.trim(),b:l.bbox,h:l.bbox.y1-l.bbox.y0})).sort((a,b)=>a.b.y0-b.b.y0||a.b.x0-b.b.x0);
+    const blocks=[];
+    for(const L of good){
+      let host=null;
+      for(let k=blocks.length-1;k>=Math.max(0,blocks.length-4);k--){const B=blocks[k];
+        const gap=L.b.y0-B.y1, ov=Math.min(L.b.x1,B.x1)-Math.max(L.b.x0,B.x0), minW=Math.min(L.b.x1-L.b.x0,B.x1-B.x0);
+        if(gap>-B.lh*0.5&&gap<B.lh*0.9&&ov>minW*0.3&&L.h/B.lh>0.78&&L.h/B.lh<1.28){host=B;break;}}
+      if(host){host.ls.push(L.t);host.x0=Math.min(host.x0,L.b.x0);host.x1=Math.max(host.x1,L.b.x1);host.y1=Math.max(host.y1,L.b.y1);}
+      else blocks.push({ls:[L.t],x0:L.b.x0,x1:L.b.x1,y0:L.b.y0,y1:L.b.y1,lh:L.h});
+    }
+    let paras=blocks.map(B=>({text:B.ls.join(' ').replace(/(\w)-\s+(\w)/g,'$1$2').replace(/\s+/g,' ').trim(),b:{x0:B.x0,y0:B.y0,x1:B.x1,y1:B.y1},lh:B.lh}));
     if(!paras.length){trState={imgMsg:'这张图片里没认出英文。换一张更清晰、文字更大的试试。'};trBusy=false;renderTr();return;}
     setMsg(`<span class="spin"></span> 认出 ${paras.length} 段英文，正在翻译…`);
-    const results=new Array(paras.length);let next=0;
-    await Promise.all(Array.from({length:Math.min(5,paras.length)},async()=>{while(next<paras.length){const i=next++;try{results[i]=await translatePairs(paras[i].text);}catch(e){results[i]=[{en:paras[i].text,zh:'（翻译失败）'}];}}}));
+    let results;
+    try{results=await pairsForChunks(paras.map(p=>p.text));}catch(e){results=paras.map(p=>[{en:p.text,zh:'（翻译失败）'}]);}
     const allPairs=[];
     paras.forEach((p,i)=>{const pr=results[i]||[];p.zh=pr.filter(x=>!x.br).map(x=>x.zh).join('');allPairs.push(...pr,{br:true});});
     allPairs.pop();
