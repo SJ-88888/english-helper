@@ -20315,9 +20315,10 @@ async function viaGoogle2(text,sl,tl,ms){ // second Google endpoint; returned in
     return [[[t,text]]];}
   finally{to.done()}
 }
-let g2=false;
+let g2=false;try{g2=localStorage.getItem('eh-g2')==='1';}catch(e){}
+function setG2(v){g2=v;try{localStorage.setItem('eh-g2',v?'1':'0')}catch(e){}}
 async function viaGoogle(text,sl,tl,ms){
-  if(!g2){try{return await viaGoogle1(text,sl,tl,ms);}catch(e){try{const r=await viaGoogle2(text,sl,tl,ms);g2=true;return r;}catch(e2){throw e;}}}
+  if(!g2){try{return await viaGoogle1(text,sl,tl,ms);}catch(e){try{const r=await viaGoogle2(text,sl,tl,ms);setG2(true);return r;}catch(e2){throw e;}}}
   try{return await viaGoogle2(text,sl,tl,ms);}catch(e){return viaGoogle1(text,sl,tl,ms);}
 }
 let msTok=null,msExp=0,msTokP=null;
@@ -20402,7 +20403,7 @@ $('#prov').onclick=async()=>{
     timed(()=>{msTok=null;return viaMs(['I extended my stay'],'en','zh-CN',6000);}).then(r=>{show('ms',r,r.ok?r.r[0].text:'');return r;}),
     timed(()=>viaMyMemory('I extended my stay','en','zh-CN')).then(r=>{show('mm',r,r.ok?r.r:'');return r;})
   ]);
-  const best=a.ok||b.ok?0:c.ok?1:2;g2=!a.ok&&b.ok;provIdx=best;fails=0;showProv();try{localStorage.setItem('eh-prov',String(best))}catch(e){}
+  const best=a.ok||b.ok?0:c.ok?1:2;setG2(!a.ok&&b.ok);provIdx=best;fails=0;showProv();try{localStorage.setItem('eh-prov',String(best))}catch(e){}
   const m=document.querySelector('#sheet .muted');if(m)m.textContent=best===2?'Google 和微软都不通。请截图发给 Claude，方便找原因。':'检测完成，已切到 '+['Google','微软'][best]+' 线路。';
 };
 // try faster providers again every 2 minutes after a fallback
@@ -20749,7 +20750,9 @@ async function pairsForChunks(chunks,dir){ // -> one list of {en,zh,rev} per chu
   dir=dir||'en-zh';
   const [sl,tl]=dir==='en-zh'?['en','zh-CN']:['zh-CN','en'];
   const lists=await withProviders({
-    google:async()=>{const res=[];await Promise.all(chunks.map(async(c,i)=>{const j=await viaGoogle(c,sl,tl,6000);res[i]=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({src:String(x[1]).trim(),tgt:String(x[0]).trim()}));}));return res;},
+    google:async()=>{const res=[];await Promise.all(chunks.map(async(c,i)=>{
+      if(g2){const ss=splitSent(c);res[i]=await Promise.all(ss.map(async x=>{const j=await viaGoogle(x,sl,tl,6000);return {src:x,tgt:(j[0]||[]).map(y=>y&&y[0]||'').join('').trim()};}));return;}
+      const j=await viaGoogle(c,sl,tl,6000);res[i]=(j[0]||[]).filter(x=>x&&x[0]&&x[1]).map(x=>({src:String(x[1]).trim(),tgt:String(x[0]).trim()}));}));return res;},
     ms:async()=>{const res=[];for(let i=0;i<chunks.length;i+=50){const part=chunks.slice(i,i+50);const tr=await viaMs(part,sl,tl,8000);part.forEach((c,k)=>res[i+k]=msPairs(c,tr[k]));}return res;},
     mymemory:async()=>Promise.all(chunks.map(c=>Promise.all(splitSent(c).map(async s2=>{let t='';try{t=await viaMyMemory(s2,sl,tl);}catch(e){t='（翻译失败）';}return {src:s2,tgt:t};}))))
   });
@@ -21048,7 +21051,7 @@ renderLines();updateDue();
 // warm up the translator so the first sentence is fast
 probeProviders();
 // new-version notice: the page can be cached for a while, so check a tiny version file
-const APP_VER='20261031095432';
+const APP_VER='20261031095742';
 async function checkUpdate(){
   try{const r=await fetch('version.txt?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.text()).trim();
     if(v&&v!==APP_VER&&!document.getElementById('upd')){document.body.insertAdjacentHTML('beforeend','<button id="upd" class="updbar">有新版本，点这里更新</button>');
