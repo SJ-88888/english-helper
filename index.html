@@ -20542,7 +20542,7 @@ function lineHTML(l,isEx){
   ${isEx?'<span></span>':`<button class="star${l.star?' on':''}" aria-label="标记没听懂" data-star="${l.id}">${l.star?ICON.starOn:ICON.star}</button>`}
   <div class="zh" ${l.err?`data-retry="${l.id}"`:''}>${zh}</div></div>`;
 }
-function helpHTML(l){const b=l.en?politer(l.en):null;const tips=pbFind(l.zh);return `<div class="helpcard"><div class="q">我想说：${esc(l.zh)}</div><div class="opt"><button data-say="${esc((b&&b.text)||l.en||'')}" aria-label="朗读">${ICON.play}</button><span>${esc((b&&b.text)||l.en||'…')}</span></div>${tips.map(tipHTML).join('')}</div>`;}
+function helpHTML(l){return `<div class="helpcard"><div class="q">我想说：${esc(l.zh)}</div><div class="opt"><button data-say="${esc(l.en||'')}" aria-label="朗读">${ICON.play}</button><span>${esc(l.en||'…')}</span></div></div>`;}
 function introHTML(){
   if(!SR)return `<div class="warn"><b>这个浏览器不支持语音识别。</b><br>请复制网址，用 iPhone 自带的 <b>Safari</b> 打开（iOS 14.5 以上）。在微信或 Claude 里直接打开不行。</div>`;
   return `<div class="intro"><h2>手机平放在桌上，点一下麦克风</h2><ol>
@@ -20598,8 +20598,8 @@ $('#helpBtn').onclick=()=>{
     if(!cur)newSession();
     const h={id:lid(),kind:'help',zh,en:''};cur.lines.push(h);
     done();appendLine(h);
-    try{h.en=await translate(zh,'zh-en');}catch(e){h.en='（翻译失败，请检查网络）';}
-    renderLines();scrollDown();if(h.en){const b=politer(h.en);speak(b?b.text:h.en);}saveCurSoon();
+    try{h.en=polish(zh,await translate(zh,'zh-en'));}catch(e){h.en='（翻译失败，请检查网络）';}
+    renderLines();scrollDown();if(h.en)speak(h.en);saveCurSoon();
   };
 };
 
@@ -20736,175 +20736,71 @@ $('#logScroll').addEventListener('click',e=>{
     SESS=SESS.filter(s=>s.id!==d.dataset.del);saveSessions();delArm=null;renderLog();toast('已删除');}
 });
 
-// ---------- 地道短语库（离线）：[场景, 中文触发词(|分隔), 地道英文, 说明, 例句] ----------
-const PB=[
-// 酒店
-['酒店','续房|续住|多住一晚|多住几天|多住两晚|延住|延长入住','extend my stay','酒店续住的固定说法。renew 多用于合同、会员、证件续期，用在房间上不地道','I\'d like to extend my stay for two more nights.'],
-['酒店','退房','check out','退房是动词词组 check out，名词写 checkout','What time is checkout?'],
-['酒店','延迟退房|晚点退房|晚一点退房','late checkout','直接问能不能延迟退房','Is late checkout possible?'],
-['酒店','提前入住|早点入住|早一点入住','early check-in','','Is early check-in available?'],
-['酒店','办理入住|办入住','check in','报预订人名字用 under','I\'d like to check in. I have a reservation under Shan.'],
-['酒店','换房|换个房间|换一间','switch rooms','','Could I switch to a quieter room?'],
-['酒店','打扫房间|打扫一下房间|清洁房间','housekeeping','客房清洁统称 housekeeping','Could you send housekeeping to my room?'],
-['酒店','寄存行李|存行李|放一下行李','leave my bags','','Can I leave my bags here until 6pm?'],
-['酒店','房卡','key card','房卡失灵说 isn\'t working','My key card isn\'t working.'],
-['酒店','叫醒服务|叫醒','wake-up call','','Could I get a wake-up call at 7am?'],
-['酒店','空调坏了|空调不制冷|空调不凉','the AC isn\'t working','东西坏了口语多用 isn\'t working，比 is broken 更自然','The AC in my room isn\'t working.'],
-['酒店','没有热水|没热水','there\'s no hot water','','There\'s no hot water in the shower.'],
-['酒店','含早|包早餐|含早餐','Is breakfast included?','','Is breakfast included in the rate?'],
-['酒店','无线密码|WiFi密码|wifi密码|Wi-Fi密码','What\'s the Wi-Fi password?','',''],
-['酒店','免打扰','Do Not Disturb','门牌上的免打扰就是这个说法',''],
-// 餐厅
-['餐厅','买单|结账|埋单','Could we get the bill, please?','新加坡、英国用 bill，美国用 check。不要说 pay money',''],
-['餐厅','打包','Could we get a box for this?','剩菜打包用 a box；点外带用 take away（新加坡）或 to go（美国）',''],
-['餐厅','外带|带走','take away / to go','新加坡常说 take away，美国说 to go','Two iced lattes to go, please.'],
-['餐厅','堂食|在这里吃|在这吃','for here / dine in','新加坡点餐时说 having here 也很常见','For here, please.'],
-['餐厅','推荐|招牌菜|招牌','What do you recommend?','问招牌菜也可以说 What\'s your signature dish?',''],
-['餐厅','不要辣|不辣|少辣|微辣','not too spicy / no chili','少辣说 less spicy，完全不要说 no chili','Could you make it not too spicy?'],
-['餐厅','少冰|去冰|不加冰|走冰','less ice / no ice','','Less ice, please.'],
-['餐厅','少糖|半糖|无糖|三分糖|七分糖','less sugar / half sugar','奶茶店常用百分比：25% / 50% sugar','Half sugar, please.'],
-['餐厅','过敏','I\'m allergic to …','过敏用 allergic to，后面接食物','I\'m allergic to peanuts.'],
-['餐厅','订位|订座|订个位|订张桌','book a table','','I\'d like to book a table for four at 7.'],
-['餐厅','等位|要等多久','How long is the wait?','',''],
-['餐厅','菜还没上|上菜太慢|还没上菜','We\'re still waiting for our food.','比直接抱怨更礼貌','Excuse me, we\'re still waiting for our food.'],
-['餐厅','分开付|AA|各付各的','split the bill','','Can we split the bill?'],
-['餐厅','刷卡','pay by card','','Can I pay by card?'],
-['餐厅','服务费','service charge','新加坡账单常见 service charge 和 GST','Is the service charge included?'],
-// 商务
-['商务','跟进','follow up','','I\'ll follow up with you next week.'],
-['商务','回复你|答复你|给你回复|回头告诉你|再告诉你','get back to you','比 reply you 地道（reply 后面要加 to）','I\'ll get back to you by Friday.'],
-['商务','确认一下|核实一下|再确认','double-check','','Let me double-check and get back to you.'],
-['商务','对齐|同步一下|碰一下|沟通一下','sync up / touch base','中式英语常说 align，口语里 sync up、touch base 更自然','Let\'s sync up tomorrow morning.'],
-['商务','方便的时候|有空的时候','when you get a chance','正式邮件可写 at your earliest convenience','Could you take a look when you get a chance?'],
-['商务','辛苦了','Thanks for all your hard work.','「辛苦了」没有直译，用感谢来表达',''],
-['商务','麻烦你了|麻烦您了|谢谢帮忙','I really appreciate it.','比单说 thank you 更有分量',''],
-['商务','有空吗|方便聊吗|聊几句','Do you have a minute?','约通话可说 Are you free for a quick call?',''],
-['商务','开个会|约个会|约个时间','set up a meeting','','Could we set up a meeting next week?'],
-['商务','改时间|改期|推迟','reschedule / push back','会议往后推说 push back','Can we push the meeting back to 3pm?'],
-['商务','会议提前|提前开会|往前挪','move up','会议提前说 move up','Can we move the meeting up to 10am?'],
-['商务','报价','quote','','Could you send me a quote for 500 units?'],
-['商务','便宜点|还能便宜|砍价|降点价|优惠点','Is there any flexibility on the price?','比 can it be cheaper 更商务、更客气','Can you do a better price if we order more?'],
-['商务','批量折扣|量大优惠|大单优惠','volume discount','','Do you offer a volume discount?'],
-['商务','续约|续签|续合同','renew the contract','合同续签才用 renew','We\'d like to renew the contract for another year.'],
-['商务','账期|付款条件|付款方式','payment terms','30 天账期说 net 30','Our payment terms are net 30.'],
-['商务','定金|订金','deposit','','We\'ll pay a 30% deposit upfront.'],
-['商务','尾款','the balance / final payment','','The balance is due on delivery.'],
-['商务','交期|交货期|交货时间','lead time','采购常用词 lead time','What\'s the lead time for this order?'],
-['商务','进度落后|延期了|赶不上进度','behind schedule','','We\'re a bit behind schedule.'],
-['商务','起订量|最小起订量|最低订量','minimum order quantity (MOQ)','','What\'s your MOQ?'],
-['商务','合作','work with','中式英语爱用 cooperate，口语里 work with / partner with 更自然','We\'d love to work with you.'],
-['商务','双赢','win-win','',''],
-['商务','我这边|我们这边','on my end / on our side','','Everything looks good on our side.'],
-['商务','好的收到|收到|知道了','Got it. / Noted.','回复同事、客户的简短确认',''],
-['商务','附件','attached','正式邮件写 Please find attached …','I\'ve attached the invoice.'],
-['商务','截止日期|截止时间|最后期限','deadline','',''],
-['商务','有进展吗|进度怎么样|什么进展','Any update on …?','','Any update on the order?'],
-['商务','拍板|做决定|说了算','make the call / have the final say','',''],
-['商务','考虑一下|想一想','think it over','','Let me think it over and get back to you.'],
-['商务','一言为定|成交','It\'s a deal.','',''],
-// 门店
-['门店','营业额|流水','sales / revenue','新加坡英式英语也常说 turnover','Our sales were up 10% this month.'],
-['门店','客流量|人流量','foot traffic','','The mall gets a lot of foot traffic on weekends.'],
-['门店','客单价','average spend per customer','',''],
-['门店','人手不够|缺人|人不够','short-staffed','','We\'re short-staffed today.'],
-['门店','排班|排班表','roster / schedule','新加坡常用 roster','I\'ll send out next week\'s roster tonight.'],
-['门店','兼职','part-timer','','We\'re hiring part-timers for the weekend.'],
-['门店','投诉','complaint','处理投诉说 handle a complaint','We received a complaint about the wait time.'],
-['门店','退款','refund','','I\'d like a refund, please.'],
-['门店','卖完了|售罄|卖光了','sold out','','Sorry, that one\'s sold out today.'],
-['门店','试营业','soft opening','正式开业是 grand opening',''],
-['门店','开业','grand opening','',''],
-['门店','装修','renovation / fit-out','店铺交付后的装修在租赁里叫 fit-out','The fit-out will take about six weeks.'],
-['门店','免租期','rent-free period','',''],
-['门店','物业','building management','',''],
-['门店','房东','landlord','',''],
-['门店','续租','renew the lease','','We plan to renew the lease.'],
-['门店','退租','terminate the lease','',''],
-['门店','加盟','franchise','加盟商是 franchisee',''],
-['门店','供应商','supplier','',''],
-['门店','库存','inventory / stock','',''],
-['门店','缺货|断货','out of stock','补货说 restock','We\'re out of stock on tapioca pearls.'],
-['门店','补货','restock','',''],
-['门店','保质期','shelf life','',''],
-['门店','卫生检查','hygiene inspection','',''],
-// 出行
-['出行','怎么走|怎么去','How do I get to …?','','How do I get to the MRT station?'],
-['出行','堵车','stuck in traffic','','Sorry, I\'m stuck in traffic.'],
-['出行','迟到|晚到|晚点到','running late','','I\'m running about ten minutes late.'],
-['出行','转机','connecting flight / layover','',''],
-['出行','托运','check in (my bags)','','I\'d like to check in one bag.'],
-['出行','靠窗','window seat','靠过道是 aisle seat',''],
-['出行','改签','change my flight','',''],
-['出行','打车|叫车','book a Grab / get a taxi','新加坡常说 book a Grab','I\'ll book a Grab.'],
-// 购物
-['购物','试穿|试一下','try on','','Can I try this on?'],
-['购物','太贵了|有点贵','a bit pricey','比 too expensive 委婉','That\'s a bit pricey for me.'],
-['购物','退货','return','','Can I return this?'],
-['购物','小票|收据','receipt','',''],
-// 日常
-['日常','帮我看看|帮我看一下|帮我查一下|帮我查查|帮我确认','Could you take a look? / Could you check that for me?','请别人帮忙用 Could you，比 Can you 礼貌',''],
-['日常','麻烦你|麻烦您','Would you mind …?','','Would you mind sending it again?'],
-['日常','打扰一下|不好意思打扰','Sorry to bother you, but …','',''],
-['日常','没关系|没事','No worries.','',''],
-['日常','随便|都可以|都行','Either is fine.','别直译成 casual','Either is fine with me.'],
-['日常','加微信|加个微信','add you on WeChat','新加坡更常用 WhatsApp','Can I add you on WhatsApp?'],
-['日常','保持联系','keep in touch','',''],
-['日常','好久不见','It\'s been a while!','Long time no see 口语也能用',''],
-['日常','慢走|路上小心','Take care! / Get home safe!','',''],
-['日常','再说一遍|再说一次','Sorry, could you say that again?','',''],
-['日常','说慢点|慢一点说|说慢一点','Could you speak a little slower?','',''],
-['日常','我英语不好|英语不太好','My English isn\'t great, so please bear with me.','bear with me 意思是请多包涵',''],
-['日常','什么意思','What do you mean by …?','',''],
-['日常','有道理','That makes sense.','',''],
-['日常','看情况','It depends.','',''],
-['日常','来不及','won\'t make it in time','','I won\'t make it in time.'],
-['日常','顺便','while you\'re at it','','Could you grab me a coffee while you\'re at it?'],
-['日常','放心','Don\'t worry. / Rest assured.','Rest assured 用于正式场合',''],
-['日常','加油','You\'ve got this!','',''],
-['日常','我请客|我请|算我的','It\'s on me.','','Lunch is on me.'],
+// ---------- 让中译英的译文更地道（直接改写译文，不另加提示） ----------
+// 1) 整句就是一句常用话时，直接用地道说法
+const WHOLE=[
+  ['买单|结账|埋单|我要买单|我们买单|我们结账','Could we get the bill, please?'],
+  ['打包|帮我打包|这个打包|打包带走','Could I get a box for this?'],
+  ['外带|带走','To go, please.'],
+  ['堂食|在这吃|在这里吃','For here, please.'],
+  ['少冰','Less ice, please.'],['去冰|不加冰|走冰','No ice, please.'],
+  ['半糖','Half sugar, please.'],['少糖','Less sugar, please.'],
+  ['加油','You\'ve got this!'],['辛苦了|辛苦你了|辛苦啦','Thanks for all your hard work.'],
+  ['没关系|没事|没事儿','No worries.'],['随便|都可以|都行','Either is fine.'],
+  ['收到|好的收到|好收到','Got it.'],['有道理','That makes sense.'],['看情况','It depends.'],
+  ['一言为定|成交','It\'s a deal.'],['我请客|我请|算我的','It\'s on me.'],
+  ['慢走|路上小心','Take care!'],['再说一遍|再说一次|你再说一遍','Sorry, could you say that again?'],
+  ['说慢点|说慢一点|慢一点说|请说慢一点','Could you speak a little slower?'],
+  ['太贵了|有点贵','That\'s a bit pricey.'],['好久不见','It\'s been a while!'],
+  ['推荐什么|有什么推荐|推荐一下','What do you recommend?'],['要等多久|等多久','How long is the wait?'],
+  ['可以刷卡吗|能刷卡吗','Can I pay by card?'],['分开付|AA|各付各的','Can we split the bill?'],
+  ['帮我看看|帮我看一下|帮忙看一下','Could you take a look?'],['帮我查一下|帮我查查','Could you check that for me?'],
+  ['WiFi密码是多少|wifi密码是多少|无线密码是多少','What\'s the Wi-Fi password?'],
+  ['含早吗|包早餐吗|含早餐吗','Is breakfast included?'],['可以延迟退房吗|能晚点退房吗','Is late checkout possible?'],
 ];
-// 让英文译文更礼貌、更自然的改写（只改句首，安全）
+// 2) 句子里的直译说法，换成地道说法（只有中文里有对应词时才改）
+const PHRASE=[
+  [/续房|续住|延住|多住/,/\b(renew|continu)(e|ed|es|ing)?\s+(?:my|the|our)\s+(?:hotel\s+)?(?:room|stay|accommodation)\b/i,m=>'extend'+({e:'',ed:'ed',es:'s',ing:'ing'}[(m[2]||'e').toLowerCase()]??'')+' my stay'],
+  [/帮我看|帮忙看|帮我查/,/\bhelp me (?:to )?(?:take a look|have a look|look at it|look|see)\b/i,()=>'take a look'],
+  [/帮我查|帮我确认|帮我核实/,/\bhelp me (?:to )?(check|confirm|verify)\b/i,m=>m[1]],
+  [/回复|答复|回你/,/\breply (?:to )?you\b/i,()=>'get back to you'],
+  [/合作/,/\bcooperat(e|es|ed|ing) with\b/i,m=>'work'+({e:'',es:'s',ed:'ed',ing:'ing'}[m[1].toLowerCase()]??'')+' with'],
+  [/合作/,/\b(?:our|the) cooperation\b/i,m=>m[0].split(' ')[0]+' partnership'],
+  [/合作/,/\bcooperation\b/i,()=>'working together'],
+  [/打包/,/\bpack (?:it|this|them|these)(?: up)?(?: for me)?\b/i,()=>'get a box for this'],
+  [/空调/,/\b(?:the )?air[- ]?conditioner\b/i,m=>(/^the/i.test(m[0])?'the ':'')+'AC'],
+  [/坏了/,/\b(?:is|are) broken(?: down)?\b/i,m=>/^are/i.test(m[0])?'aren\'t working':'isn\'t working'],
+  [/人手不够|缺人|人不够/,/\b(?:there (?:is|are) )?not enough (?:manpower|staff|people)\b/i,()=>'we\'re short-staffed'],
+  [/交期|交货期/,/\bdelivery (?:period|time|date)\b/i,()=>'lead time'],
+  [/起订量/,/\bminimum (?:order|starting) (?:volume|amount)\b/i,()=>'minimum order quantity'],
+  [/账期/,/\b(?:account|billing|payment) period\b/i,()=>'payment terms'],
+  [/营业额|流水/,/\bturnover\b/i,()=>'sales'],
+  [/客流/,/\b(?:passenger|customer) flow\b/i,()=>'foot traffic'],
+  [/排班/,/\bshift scheduling\b/i,()=>'the roster'],
+];
+// 3) 句首/分句的直白说法，换成礼貌说法
 const REWRITES=[
-  [/^Can you\b/,'Could you','请求别人时用 Could you 更礼貌'],
-  [/^Will you\b/,'Could you','请求别人时用 Could you 更礼貌'],
-  [/^I want to\b/,"I'd like to",'I\'d like to 比 I want to 客气'],
-  [/^I want\b/,"I'd like",'I\'d like 比 I want 客气'],
-  [/^Give me\b/,'Could I have','向人要东西用 Could I have 更礼貌'],
-  [/^Help me\b/,'Could you help me','直接用 Help me 像命令'],
+  [/^Can you\b/,'Could you'],[/^Will you\b/,'Could you'],
+  [/^I want to\b/,"I'd like to"],[/^I want\b/,"I'd like"],
+  [/^Give me\b/,'Could I have'],[/^Help me\b/,'Could you help me'],
 ];
-function pbFind(zh){
-  const out=[];if(!zh)return out;
-  for(const e of PB){const ts=e[1].split('|');const hit=ts.find(t=>zh.includes(t));if(hit)out.push({cat:e[0],zh:hit,en:e[2],note:e[3],ex:e[4]});}
-  return out;
-}
-function pbFindEn(en){ // English source: explain known multi-word phrases
-  const out=[];if(!en)return out;const low=en.toLowerCase();
-  for(const e of PB){
-    const core=e[2].split(' / ')[0].replace(/\(.*?\)|…|\?|\./g,'').trim().toLowerCase();
-    if(core.split(/\s+/).length<2)continue;
-    const re=new RegExp('\\b'+core.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\bmy\b/g,'(?:my|your|our|his|her|their)').replace(/^(\w+)/,'$1\\w*')+'\\b');
-    if(re.test(low))out.push({cat:e[0],zh:e[1].split('|')[0],en:e[2],note:e[3],ex:e[4]});
-  }
-  return out;
-}
 function politer(en){
-  let t=en,why=null;
-  for(const [re,to,w] of REWRITES){
+  let t=en;
+  for(const [re,to] of REWRITES){
     const g=new RegExp('(^|[,;.!?]\\s+)'+re.source.slice(1),'i');
-    if(g.test(t)){t=t.replace(g,(m,pre)=>pre+(pre&&/[,;]/.test(pre)&&to.startsWith('Could')?'c'+to.slice(1):to));why=why||w;}
+    t=t.replace(g,(m,pre)=>pre+(pre&&/[,;]/.test(pre)&&to.startsWith('Could')?'c'+to.slice(1):to));
   }
-  return why&&t!==en?{text:t,why}:null;
+  t=t.replace(/(^|[.!?]\s+)(could you [^.!?]*?)\.(\s|$)/gi,'$1$2?$3');
+  if(/^could you\b/i.test(t)&&!/[.!?]\s*$/.test(t))t=t.trim()+'?';
+  return t;
 }
-function tipsForPairs(pairs,dir){
-  const seen=new Set(),tips=[];
-  for(const p of pairs){if(p.br)continue;
-    const list=dir==='zh-en'?pbFind(p.zh):pbFindEn(p.en).concat(pbFind(p.zh));
-    for(const t of list){const k=t.en;if(seen.has(k))continue;seen.add(k);tips.push(t);}
-  }
-  return tips;
-}
-function tipHTML(t){
-  return `<div class="tip"><div class="tip-h"><span class="chip">${esc(t.cat)}</span><span class="tip-zh">${esc(t.zh)}</span><span class="muted">→</span><b class="tip-en">${esc(t.en)}</b></div>${t.note?`<div class="tip-note">${esc(t.note)}</div>`:''}${t.ex?`<div class="tip-ex">${esc(t.ex)} <button class="say" data-say="${esc(t.ex)}" aria-label="朗读">${ICON.play}</button></div>`:''}</div>`;
+function polish(zh,en){
+  if(!en)return en;
+  const core=(zh||'').replace(/[\s，。！？、,.!?~～]/g,'').replace(/^(请|麻烦|麻烦你|麻烦您)/,'').replace(/(一下|吧|呀|啊|谢谢|谢谢你)$/,'');
+  for(const [ts,out] of WHOLE){if(ts.split('|').includes(core))return out;}
+  let t=en;
+  for(const [zre,ere,fn] of PHRASE){if(zre.test(zh||'')){t=t.replace(ere,(...a)=>{const r=fn(a);return /^[A-Z]/.test(a[0])?r.charAt(0).toUpperCase()+r.slice(1):r;});}}
+  return politer(t);
 }
 
 // ---------- 翻译 tab: text & image ----------
@@ -20948,7 +20844,7 @@ function joinPairs(lists){
   });
   out.pop();return out;
 }
-async function translatePairs(text,dir){dir=dir||'en-zh';return joinPairs(await pairsForChunks(chunksOf(text,dir==='en-zh'?1200:400),dir));}
+async function translatePairs(text,dir){dir=dir||'en-zh';const out=joinPairs(await pairsForChunks(chunksOf(text,dir==='en-zh'?1200:400),dir));if(dir==='zh-en')out.forEach(p=>{if(!p.br)p.en=polish(p.zh,p.en);});return out;}
 function wordsOf(pairs){
   const map=new Map();let total=0;
   for(const p of pairs){if(p.br)continue;for(const tok of tokens(p.en)){total++;const lem=norm(tok);if(!lem||lem.length<2||STOP.has(lem))continue;const d=DICT.get(lem);if(!d)continue;
@@ -20981,10 +20877,8 @@ function renderTr(){
   }
   if(trState.pairs&&trState.pairs.length){
     const n=trState.pairs.filter(p=>!p.br).length;
-    const enLine=p=>{const b=p.rev?politer(p.en):null;return `<div class="en">${markWords(p.en)} <button class="say" data-say="${esc(p.en)}" aria-label="朗读">${ICON.play}</button></div>`+(b?`<div class="better"><small>更礼貌：${esc(b.why)}</small>${esc(b.text)} <button class="say" data-say="${esc(b.text)}" aria-label="朗读">${ICON.play}</button></div>`:'');};
+    const enLine=p=>`<div class="en">${markWords(p.en)} <button class="say" data-say="${esc(p.en)}" aria-label="朗读">${ICON.play}</button></div>`;
     h+=zone('pairs','逐句对照',`${n} 句 · ${trState.dir==='zh-en'?'中→英':'英→中'}`,`<div class="pairs" style="margin-top:0">${trState.pairs.map(p=>p.br?'<hr>':(p.rev?`<div class="pair"><div class="zhsrc">${esc(p.zh)}</div>${enLine(p)}</div>`:`<div class="pair">${enLine(p)}<div class="zh">${esc(p.zh)}</div></div>`)).join('')}</div>`);
-    const tips=tipsForPairs(trState.pairs,trState.dir||'en-zh');
-    if(tips.length)h+=zone('tips','地道提示',`${tips.length} 条`,`<div>${tips.map(tipHTML).join('')}</div>`);
     const W=wordsOf(trState.pairs);
     const list=(trAll?W.all:W.fresh).slice().sort(trSort==='rank'?(a,b)=>a.d.r-b.d.r:(a,b)=>b.n-a.n||a.d.r-b.d.r);
     const learnable=W.fresh.filter(e=>!vocab[e.w]).length;
@@ -21233,7 +21127,7 @@ renderLines();updateDue();
 // warm up the translator so the first sentence is fast
 probeProviders();
 // new-version notice: the page can be cached for a while, so check a tiny version file
-const APP_VER='20261031100825';
+const APP_VER='20261031101855';
 async function checkUpdate(){
   try{const r=await fetch('version.txt?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.text()).trim();
     if(v&&v!==APP_VER&&!document.getElementById('upd')){document.body.insertAdjacentHTML('beforeend','<button id="upd" class="updbar">有新版本，点这里更新</button>');
