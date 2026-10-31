@@ -45,7 +45,7 @@ h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--line)}
 body.live .dot{background:var(--danger);animation:pulse 1.4s infinite}
 @keyframes pulse{50%{opacity:.3}}
-.prov{font-size:11px;color:var(--muted);font-family:var(--f-mono)}
+.prov{font-size:12px;color:var(--muted);font-family:var(--f-zh);min-height:32px;padding:0 4px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--surface)}
 .btn.pri{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .btn.sm{min-height:32px;padding:0 11px;font-size:13px}
@@ -193,7 +193,7 @@ body.live .tabs{display:none}
     <span class="brand">英语小助手</span>
     <span class="rec"><span class="dot"></span><span id="timer" class="mono">00:00</span></span>
     <span class="sp"></span>
-    <span id="prov" class="prov"></span>
+    <button id="prov" class="prov" aria-label="翻译线路"></button>
   </div>
   <main>
     <section class="view" id="v-talk">
@@ -20299,11 +20299,26 @@ const PROVS=['google','ms','mymemory'];
 let provIdx=0, fails=0;
 function withTimeout(ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return {signal:c.signal,done:()=>clearTimeout(t)}}
 const MS_LANG={'en':'en','zh-CN':'zh-Hans'};
-async function viaGoogle(text,sl,tl,ms){
-  const to=withTimeout(ms||2500);
+async function viaGoogle1(text,sl,tl,ms){
+  const to=withTimeout(ms||4000);
   try{const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl='+sl+'&tl='+tl+'&q='+encodeURIComponent(text),{signal:to.signal});
-    if(!r.ok)throw new Error('http '+r.status);return await r.json();}
+    if(!r.ok)throw new Error('http '+r.status);const j=await r.json();if(!j||!Array.isArray(j[0]))throw new Error('format');return j;}
   finally{to.done()}
+}
+async function viaGoogle2(text,sl,tl,ms){ // second Google endpoint; returned in the same shape as the first
+  const to=withTimeout(ms||4000);
+  try{const r=await fetch('https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl='+sl+'&tl='+tl+'&q='+encodeURIComponent(text),{signal:to.signal});
+    if(!r.ok)throw new Error('http '+r.status);const j=await r.json();
+    let t=j;while(Array.isArray(t))t=t[0];
+    if(j&&j.sentences)t=j.sentences.map(x=>x.trans||'').join('');
+    if(typeof t!=='string'||!t)throw new Error('format');
+    return [[[t,text]]];}
+  finally{to.done()}
+}
+let g2=false;
+async function viaGoogle(text,sl,tl,ms){
+  if(!g2){try{return await viaGoogle1(text,sl,tl,ms);}catch(e){try{const r=await viaGoogle2(text,sl,tl,ms);g2=true;return r;}catch(e2){throw e;}}}
+  try{return await viaGoogle2(text,sl,tl,ms);}catch(e){return viaGoogle1(text,sl,tl,ms);}
 }
 let msTok=null,msExp=0,msTokP=null;
 async function msToken(){
@@ -20330,8 +20345,8 @@ function probeProviders(){
     probeP=(async()=>{
       try{
         const w=await Promise.any([
-          viaGoogle('hello','en','zh-CN',2500).then(()=>0),
-          viaMs(['hello'],'en','zh-CN',3500).then(()=>1)
+          viaGoogle('hello','en','zh-CN',4000).then(()=>0),
+          viaMs(['hello'],'en','zh-CN',5000).then(()=>1)
         ]);
         provIdx=w;
       }catch(e){provIdx=2;}
@@ -20342,6 +20357,7 @@ function probeProviders(){
   return probeP;
 }
 try{const sp=+localStorage.getItem('eh-prov');if(sp>=0&&sp<=2)provIdx=sp;}catch(e){}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&provIdx>0){probeP=null;probeProviders();}});
 async function withProviders(fns){
   await Promise.race([probeProviders(),new Promise(r=>setTimeout(r,1500))]);
   let last;
@@ -20363,7 +20379,32 @@ async function translate(text,dir){ // dir: 'en-zh' | 'zh-en'
   });
   tCache.set(key,out);return out;
 }
-function showProv(){const el=$('#prov');if(el)el.textContent=['','微软翻译','备用翻译（慢）'][provIdx];}
+function showProv(){const el=$('#prov');if(el)el.textContent=['Google 翻译 ›','微软翻译 ›','备用翻译（不准）›'][provIdx];}
+function errText(e){
+  const m=String(e&&(e.message||e.name)||e);
+  if(e&&e.name==='AbortError')return '超时没响应';
+  if(/^http (\d+)/.test(m))return '服务器拒绝（'+m.replace('http ','HTTP ')+'）';
+  if(/format/.test(m))return '返回内容异常';
+  if(/auth/.test(m))return '拿不到授权';
+  if(/quota/.test(m))return '今日额度用完';
+  if(/load failed|failed to fetch|network/i.test(m))return '连不上或被浏览器拦截';
+  return m.slice(0,60);
+}
+async function timed(fn){const t=performance.now();try{const r=await fn();return {ok:true,ms:Math.round(performance.now()-t),r};}catch(e){return {ok:false,ms:Math.round(performance.now()-t),err:errText(e)};}}
+$('#prov').onclick=async()=>{
+  const rows=[['g1','Google（主）'],['g2','Google（备）'],['ms','微软'],['mm','备用（MyMemory）']];
+  openSheet(`<h3>翻译线路检测</h3><div class="muted" style="font-size:13px">正在逐条测试，几秒钟…</div><div id="diag" style="display:flex;flex-direction:column;gap:8px">${rows.map(([k,n])=>`<div class="row" id="d-${k}"><span style="flex:1">${n}</span><span class="muted"><span class="spin"></span></span></div>`).join('')}</div><div class="row"><span style="flex:1"></span><button class="btn" id="diagClose">关闭</button></div>`);
+  $('#diagClose').onclick=closeSheet;
+  const show=(k,res,extra)=>{const el=document.getElementById('d-'+k);if(!el)return;el.lastElementChild.innerHTML=res.ok?`<span style="color:var(--ok)">✓ ${res.ms}ms</span>${extra?' · '+esc(extra):''}`:`<span style="color:var(--danger)">✗ ${esc(res.err)}</span>`;};
+  const [a,b,c,d]=await Promise.all([
+    timed(()=>viaGoogle1('I extended my stay','en','zh-CN',6000)).then(r=>{show('g1',r,r.ok?(r.r[0]||[]).map(x=>x[0]).join(''):'');return r;}),
+    timed(()=>viaGoogle2('I extended my stay','en','zh-CN',6000)).then(r=>{show('g2',r,r.ok?r.r[0][0][0]:'');return r;}),
+    timed(()=>{msTok=null;return viaMs(['I extended my stay'],'en','zh-CN',6000);}).then(r=>{show('ms',r,r.ok?r.r[0].text:'');return r;}),
+    timed(()=>viaMyMemory('I extended my stay','en','zh-CN')).then(r=>{show('mm',r,r.ok?r.r:'');return r;})
+  ]);
+  const best=a.ok||b.ok?0:c.ok?1:2;g2=!a.ok&&b.ok;provIdx=best;fails=0;showProv();try{localStorage.setItem('eh-prov',String(best))}catch(e){}
+  const m=document.querySelector('#sheet .muted');if(m)m.textContent=best===2?'Google 和微软都不通。请截图发给 Claude，方便找原因。':'检测完成，已切到 '+['Google','微软'][best]+' 线路。';
+};
 // try faster providers again every 2 minutes after a fallback
 setInterval(()=>{if(provIdx>0){viaGoogle('ok','en','zh-CN').then(()=>{provIdx=0;fails=0;showProv();}).catch(()=>{if(provIdx>1)viaMs(['ok'],'en','zh-CN').then(()=>{provIdx=1;fails=0;showProv();}).catch(()=>{});});}},120000);
 
@@ -21007,7 +21048,7 @@ renderLines();updateDue();
 // warm up the translator so the first sentence is fast
 probeProviders();
 // new-version notice: the page can be cached for a while, so check a tiny version file
-const APP_VER='20261029210931';
+const APP_VER='20261031095432';
 async function checkUpdate(){
   try{const r=await fetch('version.txt?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.text()).trim();
     if(v&&v!==APP_VER&&!document.getElementById('upd')){document.body.insertAdjacentHTML('beforeend','<button id="upd" class="updbar">有新版本，点这里更新</button>');
